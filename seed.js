@@ -98,12 +98,12 @@ module.exports = {
         { key: 'disp_por_ap', label: 'Dispositivos por AP (promedio)', integer: false, min: 0, max: 500, required: true },
       ],
       kpis: [
-        { key: 'disp_por_ap', label: 'Dispositivos por AP (promedio)', unit: 'dispositivos / AP', short: 'disp./AP', dir: 'down', baseline: 18, target: null, limit: 30, limitLabel: 'Criterio de rediseño', decimals: 1, note: 'Más de 30 dispositivos por AP durante más de 5 días consecutivos en pisos críticos obliga a evaluar un rediseño WLAN.' },
+        { key: 'disp_por_ap', label: 'Dispositivos por AP (promedio)', unit: 'dispositivos / AP', short: 'disp./AP', dir: 'down', baseline: 18, target: null, limit: 37, limitLabel: 'Criterio de rediseño', decimals: 1, note: 'Más de 37 dispositivos por AP durante más de 5 días consecutivos en pisos críticos obliga a evaluar un rediseño WLAN.' },
       ],
       sections: [
         { title: 'Criterios para rediseños', type: 'list', items: [
           'El crecimiento de dispositivos está sujeto a la demanda y proyección de ocupación definida por el cliente.',
-          'Más de 30 dispositivos por AP durante más de 5 días consecutivos en pisos críticos: evaluación de rediseño WLAN.',
+          'Más de 37 dispositivos por AP durante más de 5 días consecutivos en pisos críticos: evaluación de rediseño WLAN.',
         ] },
         { title: 'Procedimiento para crecimiento de usuarios Wi-Fi en pisos críticos', type: 'groups', groups: [
           { title: 'Levantamiento y baseline actual', items: ['Usuarios actuales y crecimiento esperado.', 'Distribución de usuarios de datos y VoWiFi.', 'Utilización de canales, airtime, RSSI/SNR y capacidad de los AP.', 'Validación de infraestructura LAN, PoE y uplinks.'] },

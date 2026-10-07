@@ -449,3 +449,40 @@ td.lv, .chip.lv { color: var(--ink); }
   .panel h2 { break-after: avoid; }
   .rec-tiles { grid-template-columns: 1fr 2fr; }
 }
+
+/* ---------- rediseño WLAN: seguimiento diario ---------- */
+.rd-root { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.rd-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 16px; align-items: end; }
+.label { display: block; font-weight: 600; font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+.rd-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.rd-tiles .tile-wide { grid-column: 1 / -1; }
+.tile.lv { border-color: transparent; }
+.rd-findings { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; }
+.fd { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
+.fd p { color: var(--ink-2); font-size: 14px; }
+.fd-icon { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; background: var(--none); margin-top: 1px; }
+.fd-alarm .fd-icon { background: var(--crit); } .fd-regular .fd-icon { background: var(--warn); } .fd-good .fd-icon { background: var(--good); } .fd-info .fd-icon { background: var(--prog); font-style: italic; }
+.s-peak.ch-line { stroke: #9a9b9f; stroke-width: 1.5; } .s-peak.ch-dot { fill: #9a9b9f; }
+.lg-peak::before { border-top: 2px solid #9a9b9f; }
+.rd-sedes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.rd-sede { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rd-sede.is-selected { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.rd-sede header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.rd-sede h3 { font-size: 17px; }
+.rd-sede-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rd-sede-nums > div { display: grid; gap: 4px; }
+.rd-num { font: 700 24px/1.2 var(--font-display); padding: 2px 6px; border-radius: 4px; justify-self: start; font-variant-numeric: tabular-nums; }
+.rd-spark { width: 100%; height: 54px; display: block; }
+.rd-spark .ch-line { vector-effect: non-scaling-stroke; }
+.rd-heat td.num-col { min-width: 30px; text-align: center; }
+.rd-heat th.sub { text-align: center; font-size: 10px; }
+.rd-issues { list-style: none; padding: 0 !important; }
+.rd-issues li { padding: 6px 10px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 0 4px 4px 0; font-size: 13px; color: var(--ink); }
+.rd-issues li.is-error { border-color: var(--crit); background: var(--crit-bg); }
+.rd-capture input { max-width: 160px; min-height: 36px; padding: 6px 10px; }
+.rd-capture td { padding: 6px 12px; vertical-align: middle; }
+.rd-preview { display: grid; gap: 12px; }
+@media (max-width: 1000px) { .rd-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rd-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rd-findings { grid-template-columns: 1fr; } }
+@media (max-width: 680px) { .rd-tiles, .rd-filters { grid-template-columns: 1fr; } }
+@media print { .rd-heat { font-size: 7.5px; } .rd-heat td.num-col { min-width: 0; } .rd-sedes { grid-template-columns: repeat(5, 1fr); } .rd-sede { padding: 8px; } .rd-findings { grid-template-columns: repeat(2, 1fr); } .two { grid-template-columns: 1fr 1fr; } }
+@media print { .rd-sede, .rd-sedes, .rd-tiles, .fd, .rd-root .tests { break-inside: avoid; } .rd-sede .form-actions { display: none; } }

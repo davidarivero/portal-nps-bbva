@@ -26,7 +26,24 @@ La iniciativa "Recorridos proactivos" se captura por día en la sección **Recor
 
 **Actualizar desde la versión anterior.** Sube todos los archivos al mismo repositorio; al arrancar se crean las tablas nuevas y el catálogo de sedes y pisos sin tocar usuarios, avances ni hitos existentes.
 
-## Requisitos
+## Rediseño WLAN (seguimiento diario)
+
+Dentro de la iniciativa "Rediseño WLAN sedes centrales y divisionales" hay un tablero diario de usuarios y utilización de canal por AP:
+
+- **Carga de Excel:** el ingeniero sube el "Reporte de canal de utilización" (.xlsx, una hoja por sede). El portal extrae las lecturas, las valida y muestra un resumen antes de guardar. Se puede subir el archivo completo cada día: solo se agregan las lecturas nuevas y se avisa de las que cambiarían de valor.
+- **Captura manual:** sede, fecha, hora y los valores de cada AP. Los valores muy por encima de lo habitual piden confirmación.
+- **Validación:** usuarios no numéricos o negativos, utilización fuera de 0 a 100%, porcentajes sin formato, fechas futuras o repetidas, bloques sin fecha, AP repetidos o con nombre parecido a uno existente, sedes nuevas.
+- **Métrica y colores:** usuarios por AP: bueno menos de 30, regular de 30 a 37, alarmante más de 37 (constante `UMBRALES` en `rediseno.js`). La utilización de canal se muestra pero no forma parte de la métrica.
+- **Tablero:** periodo editable (dos semanas por defecto), hallazgos automáticos, estadística general y por sede, tendencias y matriz de pico diario por AP.
+- **Exportación:** PDF (impresión del navegador) e imagen PNG por sede.
+- **Trazabilidad:** cada carga queda con el ingeniero, la fecha y la hora; un administrador puede deshacerla.
+- El indicador semanal de la iniciativa es el promedio de usuarios por AP de todas las lecturas de la semana.
+
+El histórico inicial (`seed-rediseno.json`) se carga solo cuando el portal no tiene lecturas.
+
+**Respaldo.** En Usuarios, el administrador puede descargar la base de datos completa.
+
+
 
 - Node.js **22.13 o superior**. No requiere `npm install`: no tiene dependencias externas.
 - Los datos se guardan en un archivo SQLite dentro de `data/`.
@@ -112,7 +129,7 @@ Antes de exponerlo a internet conviene una revisión de seguridad propia, como c
 | Objetivo cumplido | El valor actual cumple la métrica objetivo |
 | En progreso | Hay objetivo, aún no se cumple y el valor mejora respecto al inicial |
 | Requiere atención | Hay objetivo y el valor no mejora respecto al inicial |
-| Dentro de criterio / Evaluar rediseño | Indicadores con umbral en lugar de objetivo (dispositivos por AP: 30) |
+| Dentro de criterio / Evaluar rediseño | Indicadores con umbral en lugar de objetivo (usuarios por AP: 37) |
 | Mejora vs. inicial | Indicadores sin objetivo numérico que mejoran respecto al inicial |
 
 ## Datos iniciales
@@ -126,6 +143,8 @@ Para agregar una iniciativa nueva, añade su definición en `seed.js` antes del 
 ```
 server.js        servidor, API y base de datos
 recorridos.js    recorridos diarios, evidencias y OCR
+rediseno.js      rediseño WLAN: lecturas diarias, carga de Excel y validación
+rediseno-formato.js / xlsx-lite.js   lectura del reporte de Excel
 seed.js          definición inicial de iniciativas
 public/          login, aplicación, estilos, gráficas y logo
 data/            base de datos (se crea al arrancar)

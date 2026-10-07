@@ -11,6 +11,7 @@ const { promisify } = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
 const seed = require('./seed');
 const initRecorridos = require('./recorridos');
+const initRediseno = require('./rediseno');
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -292,8 +293,21 @@ function loadData() {
         sede: w.sedes.join(', '), evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Recorridos diarios',
       });
     }
-    merged.sort((a, b) => a.week.localeCompare(b.week));
   }
+  // Rediseño WLAN: el valor semanal es el promedio de usuarios por AP de las lecturas diarias.
+  if (rediseno && initiatives.some((i) => i.slug === 'rediseno')) {
+    const weeks = rediseno.weeklySummary();
+    const covered = new Set(weeks.map((w) => w.week));
+    merged = merged.filter((r) => !(r.initiative === 'rediseno' && covered.has(r.week)));
+    for (const w of weeks) {
+      merged.push({
+        id: null, auto: true, initiative: 'rediseno', week: w.week, values: { disp_por_ap: w.promedio },
+        detail: `Promedio de ${w.lecturas} lecturas en ${w.dias} ${w.dias === 1 ? 'día' : 'días'}. Pico de la semana: ${w.pico} usuarios en un AP.`,
+        sede: '', evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Lecturas diarias',
+      });
+    }
+  }
+  merged.sort((a, b) => a.week.localeCompare(b.week));
   return { program: seed.program, initiatives, records: merged };
 }
 const getInitiative = (slug) => {
@@ -387,6 +401,7 @@ async function api(req, res, url) {
     const body = await readJson(req);
     const it = getInitiative(body.initiative);
     if (it.slug === 'recorridos') throw new HttpError(400, 'Los recorridos proactivos ahora se capturan por día en la sección Recorridos.');
+    if (it.slug === 'rediseno') throw new HttpError(400, 'El rediseño WLAN ahora se captura por día dentro de su tablero.');
     if (!isDate(body.week)) throw new HttpError(400, 'Selecciona una fecha válida para la semana.');
     const week = mondayOf(body.week);
     if (week > mondayOf(new Date().toISOString().slice(0, 10))) throw new HttpError(400, 'No se pueden capturar semanas futuras.');
@@ -537,11 +552,21 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true });
   }
 
+  if (p === '/api/admin/respaldo' && m === 'GET') {
+    requireRole(user, (u) => u.role === 'admin');
+    const tmp = path.join(DATA_DIR, `respaldo-${crypto.randomBytes(6).toString('hex')}.db`);
+    db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
+    const buf = fs.readFileSync(tmp); fs.rmSync(tmp, { force: true });
+    audit(user.id, 'respaldo_descargado');
+    return send(res, 200, buf, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="portal-nps-respaldo-${new Date().toISOString().slice(0, 10)}.db"` });
+  }
   if (await recorridos.handle(req, res, url, user)) return;
+  if (await rediseno.handle(req, res, url, user)) return;
   throw new HttpError(404, 'Ruta no encontrada.');
 }
 
 const recorridos = initRecorridos({ db, HttpError, send, readJson, audit, now, DATA_DIR });
+const rediseno = initRediseno({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 
 /* ---------- servidor ---------- */
 const server = http.createServer(async (req, res) => {

@@ -323,7 +323,7 @@
           r.evidenceUrl ? h('a', { class: 'meta', href: r.evidenceUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Ver evidencia') : null),
         h('td', { class: 'nowrap' }, r.author, h('br'), h('span', { class: 'muted' }, localDate(r.updatedAt))),
         h('td', { class: 'actions no-present' },
-          r.auto ? h('a', { class: 'link-btn', href: '#/recorridos' }, 'Ver recorridos') : null,
+          r.auto && slug === 'recorridos' ? h('a', { class: 'link-btn', href: '#/recorridos' }, 'Ver recorridos') : null,
           canWrite() && !r.auto ? h('a', { class: 'link-btn', href: `#/capturar/${slug}/${r.week}` }, 'Editar') : null,
           !r.auto && (isAdmin() || (state.user.role === 'ingeniero' && r.createdBy === state.user.id))
             ? h('button', { class: 'link-btn', type: 'button', onclick: (e) => confirmInline(e.currentTarget, async () => { await api('DELETE', '/api/records/' + r.id); await reload('Registro eliminado'); }) }, 'Eliminar') : null))))))
@@ -350,11 +350,14 @@
         h('div', {}, h('p', { class: 'eyebrow' }, it.subtitle), h('h1', {}, it.name), pill(main.status)),
         slug === 'recorridos'
           ? h('div', { class: 'form-actions no-present' }, h('a', { class: 'btn', href: '#/recorridos' }, 'Ver recorridos diarios'), canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null)
-          : canWrite() ? h('a', { class: 'btn btn-primary no-present', href: '#/capturar/' + slug }, 'Capturar avance') : null),
+          : slug === 'rediseno'
+            ? (canWrite() ? h('div', { class: 'form-actions no-present' }, h('button', { class: 'btn', type: 'button', onclick: () => window.PortalRediseno.open('manual') }, 'Capturar lecturas'), h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalRediseno.open('excel') }, 'Cargar Excel')) : null)
+            : canWrite() ? h('a', { class: 'btn btn-primary no-present', href: '#/capturar/' + slug }, 'Capturar avance') : null),
       h('p', { class: 'kpi-caption' }, k.label),
       trio,
       facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null,
       othersBox,
+      slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
         h('p', { class: 'legend' },
           h('span', { class: 'lg lg-line' }, 'Valor semanal'),
@@ -365,10 +368,11 @@
           h('h2', {}, 'Valor generado al negocio'), h('p', { class: 'value-text' }, it.value),
           h('h2', {}, 'Impacto esperado'), h('ul', { class: 'impact' }, it.impact.map((i) => h('li', {}, i)))),
         h('section', { class: 'panel' }, h('h2', {}, 'Hitos'), msList, msForm)),
-      h('section', { class: 'panel' }, h('h2', {}, 'Bitácora de avances semanales'), table),
+      h('section', { class: 'panel' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
       h('section', { class: 'sections' }, (it.sections || []).map(renderSection), goals),
     );
     drawChart(main);
+    if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
   }
 
   /** Confirmación en la misma página (sin diálogos del navegador). */
@@ -392,7 +396,8 @@
   function viewCapture(slugArg, weekArg) {
     if (!canWrite()) return add(h('p', { class: 'empty' }, 'Tu usuario es de consulta: no puede capturar avances.'));
     if (slugArg === 'recorridos') { window.location.hash = '#/recorrido/nuevo'; return; }
-    const inits = state.data.initiatives.filter((i) => i.slug !== 'recorridos');
+    if (slugArg === 'rediseno') { window.location.hash = '#/iniciativa/rediseno'; return; }
+    const inits = state.data.initiatives.filter((i) => i.slug !== 'recorridos' && i.slug !== 'rediseno');
     let it = inits.find((i) => i.slug === slugArg) || inits[0];
     const today = todayStr();
 
@@ -483,7 +488,7 @@
     add(
       h('header', { class: 'page-head' }, h('h1', {}, 'Capturar avance semanal'),
         h('p', { class: 'muted' }, `Un registro por iniciativa por semana. Capturas como ${state.user.name}. `,
-          h('a', { href: '#/recorrido/nuevo' }, 'Los recorridos proactivos se capturan por día aquí.'))),
+          h('a', { href: '#/recorrido/nuevo' }, 'Los recorridos proactivos se capturan por día aquí'), ' y el ', h('a', { href: '#/iniciativa/rediseno' }, 'rediseño WLAN, dentro de su tablero'), '.')),
       form);
     buildFields();
   }
@@ -556,7 +561,7 @@
       h('div', { class: 'form-actions' }, h('button', { class: 'btn', type: 'submit' }, 'Crear usuarios de la lista')));
 
     add(
-      h('header', { class: 'page-head' }, h('h1', {}, 'Usuarios del portal')),
+      h('header', { class: 'page-head rec-head' }, h('h1', {}, 'Usuarios del portal'), h('a', { class: 'btn', href: '/api/admin/respaldo' }, 'Descargar respaldo de la base de datos')),
       h('section', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Persona'), h('th', {}, 'Rol'), h('th', {}, 'Estado'), h('th', {}, 'Acciones'))),
         h('tbody', {}, rows)))),
