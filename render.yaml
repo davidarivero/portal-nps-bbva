@@ -1,0 +1,18 @@
+# Despliegue en Render: New > Blueprint y elige este repositorio.
+services:
+  - type: web
+    runtime: docker
+    name: portal-nps-wlan
+    plan: 0.5c-512mb
+    healthCheckPath: /healthz
+    envVars:
+      - key: ADMIN_PASSWORD   # Render la pide al crear el servicio (mínimo 10 caracteres)
+        sync: false
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+    disk:
+      name: portal-data
+      mountPath: /app/data
+      sizeGB: 1

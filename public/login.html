@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión · Portal NPS WLAN</title>
+  <link rel="icon" href="/img/favicon.png">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="login-page">
+  <main class="login">
+    <section class="login-form" aria-labelledby="login-title">
+      <img class="login-logo" src="/img/sipnology-logo.png" alt="Sipnology. Tu visión, nuestra tecnología" width="208" height="155">
+      <h1 id="login-title">Portal de seguimiento de iniciativas</h1>
+      <p class="login-sub">Programa de mejora NPS · WLAN</p>
+
+      <form id="login" novalidate>
+        <label for="username">Usuario</label>
+        <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+
+        <label for="password">Contraseña</label>
+        <div class="pw-wrap">
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" id="toggle-pw" class="link-btn" aria-pressed="false">Mostrar</button>
+        </div>
+
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button id="login-submit" class="btn btn-primary btn-block" type="submit">Entrar</button>
+      </form>
+      <p class="login-help">¿No tienes acceso u olvidaste tu contraseña? Pídela al administrador del portal en Sipnology.</p>
+    </section>
+
+    <aside class="login-aside" aria-hidden="true">
+      <div class="login-aside-inner">
+        <p class="aside-eyebrow">Mejora de experiencia Wi-Fi</p>
+        <p class="aside-title">Avance de cada iniciativa, semana a semana<span class="dot">.</span></p>
+        <ul class="aside-list">
+          <li>Métrica inicial, actual y objetivo en una sola vista</li>
+          <li>Captura semanal con detalle y evidencia</li>
+          <li>Tablero listo para presentar al equipo directivo</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+  <script src="/js/login.js"></script>
+</body>
+</html>
