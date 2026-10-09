@@ -249,7 +249,8 @@
       } catch (err) { out.textContent = ''; out.append(h('p', { class: 'form-error' }, err.message)); }
     });
     return h('section', { class: 'panel no-print' }, h('h2', {}, 'Cargar reporte de Excel'),
-      h('p', { class: 'muted' }, 'Sube el "Reporte de canal de utilización" (.xlsx, una hoja por sede). El portal extrae las lecturas, las valida y te muestra el resumen antes de guardar. Puedes subir el archivo completo cada día: solo se agregan las lecturas nuevas.'),
+      h('p', { class: 'muted' }, 'Sube la plantilla de captura o el "Reporte de canal de utilización" (.xlsx). El portal extrae las lecturas, las valida y te muestra el resumen antes de guardar. Puedes subir el archivo completo cada día: solo se agregan las lecturas nuevas.'),
+      h('p', {}, h('a', { class: 'btn', href: '/descargas/plantilla-rediseno-wlan.xlsx', download: 'Rediseno WLAN - Lecturas.xlsx' }, 'Descargar plantilla de captura'), ' ', h('span', { class: 'muted' }, 'Una fila por AP y hora, con lista de AP y validaciones. También se acepta el reporte anterior por sede.')),
       h('div', { class: 'field' }, h('label', { for: 'rd-file' }, 'Archivo de Excel'), file), out);
   }
 

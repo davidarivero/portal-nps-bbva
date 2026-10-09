@@ -82,14 +82,27 @@ module.exports = function init(ctx) {
       cargaId = Number(db.prepare('INSERT INTO rd_cargas (ts, user_id, tipo, archivo) VALUES (?,?,?,?)').run(now(), user ? user.id : null, tipo, archivo || null).lastInsertRowid);
     }
     try {
+      // Varias hojas o grupos pueden ser la misma sede: se reúnen por la sede a la que ya pertenecen sus AP.
+      const merged = new Map();
       for (const s of parsed.sedes) {
+        const owners = new Set(s.readings.map((r) => apByName.get(r.ap)).filter(Boolean).map((a) => a.sedeId));
+        const owner = owners.size === 1 ? db.prepare('SELECT id, name FROM rd_sedes WHERE id = ?').get([...owners][0]) : null;
+        const name = owner ? owner.name : s.name;
+        if (!name) { resumen.omitidas += s.readings.length; issue('error', '', s.sheet, `${s.readings.length} lecturas de AP que no existen en el portal y sin sede indicada; se omitieron. Agrega la sede en la fila o da de alta el AP.`); continue; }
+        if (owners.size > 1) issue('aviso', name, s.sheet, `La hoja "${s.sheet}" mezcla AP de varias sedes; cada lectura se guarda con la sede de su AP.`);
+        const g = merged.get(name) || { name, sheet: s.sheet, readings: [] };
+        g.readings.push(...s.readings); merged.set(name, g);
+      }
+      for (const s of merged.values()) {
         let sede = getSede(s.name, commit);
-        if (!sede) { resumen.sedesNuevas.push(s.name); if (hasData) issue('aviso', s.name, s.sheet, `La hoja "${s.sheet}" es una sede que no existe en el portal; se creará como "${s.name}".`); sede = { id: null, name: s.name }; }
+        if (!sede) { resumen.sedesNuevas.push(s.name); if (hasData) issue('error', s.name, s.sheet, `"${s.name}" no coincide con ninguna sede del portal y sus AP son nuevos; si se guarda, se creará como sede nueva. Revisa el nombre.`); sede = { id: null, name: s.name }; }
+        const slotNext = new Map();
+        const nullSeen = new Map();
         const st = { sede: s.name, lecturas: 0, nuevas: 0, actualizadas: 0, sinCambio: 0, dias: new Set(), aps: new Set(), finDeSemana: 0, sobreUmbral: 0 };
         const known = [...apByName.values()].filter((a) => a.sedeId === sede.id).map((a) => a.name);
         for (const r of s.readings) {
           if (r.fecha > limit) { resumen.omitidas += 1; issue('error', s.name, s.sheet, `${r.ap}: la fecha ${r.fecha} es futura; la lectura se omitió.`); continue; }
-          if (r.slot > MAX_SLOTS) { resumen.omitidas += 1; continue; }
+          if (!r.byHora && r.slot > MAX_SLOTS) { resumen.omitidas += 1; continue; }
           let ap = apByName.get(r.ap);
           if (ap && sede.id && ap.sedeId !== sede.id) { resumen.omitidas += 1; issue('error', s.name, s.sheet, `${r.ap} ya pertenece a otra sede; sus lecturas en esta hoja se omitieron.`); continue; }
           if (!ap) {
@@ -104,7 +117,19 @@ module.exports = function init(ctx) {
           if (weekend(r.fecha)) st.finDeSemana += 1;
           if (r.usuarios !== null && r.usuarios > UMBRALES.alarm) st.sobreUmbral += 1;
           if (r.usuarios !== null && r.usuarios > 80) issue('aviso', s.name, s.sheet, `${r.ap} (${r.fecha}): ${r.usuarios} usuarios es un valor atípico; verifica que sea correcto.`);
-          const prev = ap ? existing.get(ap.id, r.fecha, r.slot) : null;
+          // Formato de tabla: la lectura se identifica por su hora; sin hora, por su orden dentro del día.
+          let prev = null;
+          if (r.byHora && ap) {
+            if (r.hora) prev = db.prepare('SELECT id, usuarios, util, hora FROM rd_lecturas WHERE ap_id = ? AND fecha = ? AND hora = ?').get(ap.id, r.fecha, r.hora);
+            else { const k = `${ap.id}|${r.fecha}`; const n = nullSeen.get(k) || 0; nullSeen.set(k, n + 1); prev = db.prepare('SELECT id, usuarios, util, hora FROM rd_lecturas WHERE ap_id = ? AND fecha = ? AND hora IS NULL ORDER BY slot LIMIT 1 OFFSET ?').get(ap.id, r.fecha, n); }
+            if (!prev) {
+              const k = `${ap ? ap.id : r.ap}|${r.fecha}`;
+              const base = slotNext.has(k) ? slotNext.get(k) : (ap && ap.id ? db.prepare('SELECT COALESCE(MAX(slot), 0) AS n FROM rd_lecturas WHERE ap_id = ? AND fecha = ?').get(ap.id, r.fecha).n : 0);
+              r.slot = base + 1; slotNext.set(k, r.slot);
+            }
+          } else if (r.byHora && !ap) {
+            const k = `${r.ap}|${r.fecha}`; r.slot = (slotNext.get(k) || 0) + 1; slotNext.set(k, r.slot);
+          } else prev = ap ? existing.get(ap.id, r.fecha, r.slot) : null;
           if (!prev) {
             st.nuevas += 1;
             if (commit) db.prepare(`INSERT INTO rd_lecturas (ap_id, fecha, slot, hora, usuarios, util, source, carga_id, created_by, created_at, updated_by, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)

@@ -18,6 +18,7 @@ const MAX_READINGS = 8;
 function toTime(v) {
   if (typeof v === 'number' && v >= 0 && v < 1) { const m = Math.round(v * 1440); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
   if (typeof v === 'string') { const m = v.match(/^(\d{1,2})\s*[:.]\s*(\d{2})/); if (m && Number(m[1]) < 24 && Number(m[2]) < 60) return `${m[1].padStart(2, '0')}:${m[2]}`; }
+  if (typeof v === 'string') { const m = v.trim().match(/^(\d{1,2})\s*(?:hrs?|h)\.?$/i); if (m && Number(m[1]) < 24) return `${m[1].padStart(2, '0')}:00`; }
   return null;
 }
 const titleCase = (s) => s.toLowerCase().replace(/(^|[\s-])([a-záéíóúñ])/g, (_, a, b) => a + b.toUpperCase());
@@ -25,6 +26,58 @@ const titleCase = (s) => s.toLowerCase().replace(/(^|[\s-])([a-záéíóúñ])/g
 const sedeName = (sheet) => titleCase(sheet.replace(/\s+/g, ' ').trim()).replace(/\s*-\s*/g, ' · ');
 const apName = (v) => v.toUpperCase().replace(/[\s_]+/g, '-').replace(/-+/g, '-');
 const apPiso = (name) => { const m = name.match(/^AP-P(H?\d+)-/); return m ? 'Piso ' + m[1] : null; };
+
+/* Formato de tabla (plantilla "Rediseño WLAN · Lecturas"): una fila por AP y hora. */
+const HEAD = { fecha: /^fecha$/, hora: /^hora$/, ap: /^ap$/, usuarios: /^usuarios$/, util: /^utilizacion/, sede: /^sede$/, ingeniero: /^ingeniero$/ };
+function findHeader(sh) {
+  for (let r = 1; r <= Math.min(sh.maxRow, 20); r++) {
+    const cols = {};
+    for (let c = 1; c <= Math.min(sh.maxCol, 30); c++) {
+      const x = sh.cells.get(`${r},${c}`);
+      if (!x || typeof x.v !== 'string') continue;
+      const t = plain(x.v).trim();
+      for (const [k, re] of Object.entries(HEAD)) if (re.test(t) && !cols[k]) cols[k] = c;
+    }
+    if (cols.fecha && cols.ap && cols.usuarios) return { row: r, cols };
+  }
+  return null;
+}
+function parseFlat(sh, hd, toDate, issue) {
+  const groups = new Map();
+  const seen = new Set();
+  const get = (r, k) => (hd.cols[k] ? sh.cells.get(`${r},${hd.cols[k]}`) : undefined);
+  for (let r = hd.row + 1; r <= sh.maxRow; r++) {
+    const f = get(r, 'fecha'), a = get(r, 'ap'), u = get(r, 'usuarios'), c = get(r, 'util'), h = get(r, 'hora'), s = get(r, 'sede');
+    if (!f && !a && !u && !c) continue;
+    const where = `${sh.name} fila ${r}`;
+    let fecha = null;
+    if (f && typeof f.v === 'number' && f.v >= 40000) fecha = toDate(f.v);
+    else if (f && typeof f.v === 'string') { const m = f.v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/); if (m) fecha = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+    if (!fecha) { issue('error', sh.name, where, 'Falta la fecha o no es válida; la fila se omitió.'); continue; }
+    if (!a || !isAp(a.v)) { issue('error', sh.name, where, `Falta el AP o no tiene la forma AP-…; la fila se omitió.`); continue; }
+    const ap = apName(a.v);
+    let hora = null;
+    if (h) hora = toTime(typeof h.v === 'number' && h.v >= 1 ? h.v % 1 : h.v);
+    if (h && !hora) issue('aviso', sh.name, where, `${ap}: la hora "${h.v}" no es válida; se cargó sin hora.`);
+    let usuarios = null, util = null;
+    if (u) { if (typeof u.v === 'number' && Number.isInteger(u.v) && u.v >= 0 && u.v <= 500) usuarios = u.v; else issue('error', sh.name, where, `${ap} (${fecha}): "${u.v}" no es un número de usuarios válido; se omitió.`); }
+    if (c) {
+      let x = c.v;
+      if (typeof x === 'string') { const m = x.match(/^(\d+(?:[.,]\d+)?)\s*%*$/); x = m ? Number(m[1].replace(',', '.')) : NaN; if (Number.isFinite(x)) util = x; }
+      else if (c.pct || x <= 1) util = Math.round(x * 10000) / 100;
+      else { util = x; issue('aviso', sh.name, where, `${ap} (${fecha}): utilización "${x}" sin formato de porcentaje; se interpretó como ${x}%.`); }
+      if (!Number.isFinite(util) || util < 0 || util > 100) { issue('error', sh.name, where, `${ap} (${fecha}): utilización "${c.v}" fuera de 0 a 100%; se omitió.`); util = null; }
+    }
+    if (usuarios === null && util === null) continue;
+    const key = `${ap}|${fecha}|${hora || 'r' + r}`;
+    if (seen.has(key)) { issue('error', sh.name, where, `${ap}: la lectura del ${fecha} a las ${hora} está repetida; se omitió la segunda.`); continue; }
+    seen.add(key);
+    const sede = s && typeof s.v === 'string' ? s.v.trim() : '';
+    if (!groups.has(sede)) groups.set(sede, []);
+    groups.get(sede).push({ ap, piso: apPiso(ap), fecha, hora, usuarios, util, byHora: true });
+  }
+  return [...groups].map(([sede, readings]) => ({ name: sede, sheet: sh.name, readings }));
+}
 
 function parseWorkbook(buf) {
   const { sheets, date1904 } = readXlsx(buf);
@@ -34,6 +87,9 @@ function parseWorkbook(buf) {
   const issue = (level, sede, where, msg) => out.issues.push({ level, sede, where, msg });
 
   for (const sh of sheets) {
+    if (/instruc|resumen|cat[aá]logo|catalogo/i.test(plain(sh.name))) continue; // hojas de apoyo de la plantilla
+    const flat = findHeader(sh);
+    if (flat) { out.sedes.push(...parseFlat(sh, flat, toDate, issue).filter((g) => g.readings.length)); continue; }
     const get = (r, c) => { const x = sh.cells.get(`${r},${c}`); return x ? x.v : undefined; };
     const cell = (r, c) => sh.cells.get(`${r},${c}`);
     const headers = [];
@@ -168,7 +224,7 @@ function parseWorkbook(buf) {
     delete sede.days;
     if (sede.readings.length) out.sedes.push(sede);
   }
-  if (!out.sedes.length) throw new Error('No se encontraron bloques con fecha, AP, "Usuarios" y "Utilización de canal". Revisa que el archivo sea el reporte de utilización de canal.');
+  if (!out.sedes.length) throw new Error('No se encontraron bloques con fecha, AP, "Usuarios" y "Utilización de canal". Revisa que el archivo sea la plantilla de captura (con lecturas en la hoja Captura) o el reporte de utilización de canal.');
   return out;
 }
 module.exports = { parseWorkbook, sedeName, apName, apPiso, plain };

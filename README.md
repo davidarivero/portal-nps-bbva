@@ -31,6 +31,7 @@ La iniciativa "Recorridos proactivos" se captura por día en la sección **Recor
 Dentro de la iniciativa "Rediseño WLAN sedes centrales y divisionales" hay un tablero diario de usuarios y utilización de canal por AP:
 
 - **Carga de Excel:** el ingeniero sube el "Reporte de canal de utilización" (.xlsx, una hoja por sede). El portal extrae las lecturas, las valida y muestra un resumen antes de guardar. Se puede subir el archivo completo cada día: solo se agregan las lecturas nuevas y se avisa de las que cambiarían de valor.
+- **Plantilla de captura:** `public/descargas/plantilla-rediseno-wlan.xlsx` (se descarga desde el portal). Una fila por AP y hora, con lista de AP, validaciones y colores. El portal también acepta el reporte anterior por sede; las hojas se asocian a su sede por sus AP, aunque cambie el nombre de la hoja.
 - **Captura manual:** sede, fecha, hora y los valores de cada AP. Los valores muy por encima de lo habitual piden confirmación.
 - **Validación:** usuarios no numéricos o negativos, utilización fuera de 0 a 100%, porcentajes sin formato, fechas futuras o repetidas, bloques sin fecha, AP repetidos o con nombre parecido a uno existente, sedes nuevas.
 - **Métrica y colores:** usuarios por AP: bueno menos de 30, regular de 30 a 37, alarmante más de 37 (constante `UMBRALES` en `rediseno.js`). La utilización de canal se muestra pero no forma parte de la métrica.
