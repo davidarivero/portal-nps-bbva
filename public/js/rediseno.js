@@ -339,6 +339,9 @@
         h('div', { class: 'field' }, h('label', { for: 'rd-sede' }, 'Sede'), h('select', { id: 'rd-sede', onchange: (e) => { view.sede = e.target.value; render(); } }, h('option', { value: 'all' }, 'Todas las sedes'), D.sedes.map((s) => h('option', { value: s.id, selected: String(s.id) === String(view.sede) }, s.name)))),
         h('div', { class: 'field' }, h('span', { class: 'label' }, 'Periodo rápido'), h('div', { class: 'tabs' }, [['2 semanas', 14], ['1 mes', 30], ['3 meses', 90], ['Todo', 0]].map(([t, n]) => h('button', { class: 'tab', type: 'button', onclick: () => setRange(n) }, t))))),
       h('p', { class: 'muted' }, D.rango.min ? `Hay lecturas del ${fullDate(D.rango.min)} al ${fullDate(D.rango.max)}.` : 'Aún no hay lecturas cargadas.')));
+    if (scope) push(h('div', { class: 'rd-scope no-print', role: 'status' },
+      h('button', { class: 'btn', type: 'button', onclick: () => { view.sede = 'all'; render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, '← Volver a todas las sedes'),
+      h('span', {}, 'Estás viendo solo ', h('strong', {}, scope.name), '. Los indicadores, gráficas y hallazgos corresponden a esta sede.')));
     if (view.panel === 'excel' && canWrite()) push(uploadPanel());
     if (view.panel === 'manual' && canWrite()) push(capturePanel());
 

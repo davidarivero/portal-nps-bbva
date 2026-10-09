@@ -94,7 +94,7 @@ module.exports = function init(ctx) {
         g.readings.push(...s.readings); merged.set(name, g);
       }
       for (const s of merged.values()) {
-        let sede = getSede(s.name, commit);
+        let sede = getSede(s.name, false);
         if (!sede) { resumen.sedesNuevas.push(s.name); if (hasData) issue('error', s.name, s.sheet, `"${s.name}" no coincide con ninguna sede del portal y sus AP son nuevos; si se guarda, se creará como sede nueva. Revisa el nombre.`); sede = { id: null, name: s.name }; }
         const slotNext = new Map();
         const nullSeen = new Map();
@@ -111,6 +111,7 @@ module.exports = function init(ctx) {
               const near = known.find((k) => lev(k, r.ap) <= 2);
               if (hasData) issue(near ? 'error' : 'aviso', s.name, s.sheet, near ? `"${r.ap}" no existe y se parece a "${near}": revisa si es un error de captura. Si se guarda, se creará como AP nuevo.` : `"${r.ap}" es un AP nuevo en ${s.name}; se dará de alta.`);
             }
+            if (commit && !sede.id) sede = getSede(s.name, true);
             if (commit) { ap = { id: Number(db.prepare('INSERT INTO rd_aps (sede_id, name, piso) VALUES (?,?,?)').run(sede.id, r.ap, r.piso).lastInsertRowid), name: r.ap, sedeId: sede.id }; apByName.set(r.ap, ap); }
           }
           st.lecturas += 1; st.dias.add(r.fecha); st.aps.add(r.ap);
@@ -163,6 +164,14 @@ module.exports = function init(ctx) {
     return resumen;
   }
 
+  // Limpieza: sedes vacías que dejaron cargas anteriores cuando cambió el nombre de la hoja (MTY, LEON, GDL…).
+  const empty = db.prepare('SELECT s.id, s.name FROM rd_sedes s WHERE NOT EXISTS (SELECT 1 FROM rd_aps a WHERE a.sede_id = s.id)').all();
+  if (empty.length) {
+    db.prepare(`DELETE FROM rd_sedes WHERE id IN (${empty.map(() => '?').join(',')})`).run(...empty.map((e) => e.id));
+    audit(null, 'rediseno_sedes_vacias_eliminadas', { sedes: empty.map((e) => e.name) });
+    console.log(`Rediseño WLAN: se quitaron ${empty.length} sedes sin AP (${empty.map((e) => e.name).join(', ')}).`);
+  }
+
   // Carga inicial con el histórico del reporte de Excel (solo si la base está vacía).
   const seedFile = path.join(__dirname, 'seed-rediseno.json');
   if (db.prepare('SELECT COUNT(*) AS n FROM rd_lecturas').get().n === 0 && fs.existsSync(seedFile)) {
@@ -189,7 +198,7 @@ module.exports = function init(ctx) {
     const aps = db.prepare('SELECT id, sede_id AS sedeId, name, piso FROM rd_aps ORDER BY name').all();
     return {
       desde, hasta, rango, umbrales: UMBRALES,
-      sedes: db.prepare('SELECT id, name FROM rd_sedes ORDER BY sort, id').all().map((s) => ({ ...s, aps: aps.filter((a) => a.sedeId === s.id).map(({ id, name, piso }) => ({ id, name, piso })) })),
+      sedes: db.prepare('SELECT id, name FROM rd_sedes ORDER BY sort, id').all().map((s) => ({ ...s, aps: aps.filter((a) => a.sedeId === s.id).map(({ id, name, piso }) => ({ id, name, piso })) })).filter((s) => s.aps.length),
       diario: db.prepare(`SELECT ap_id, fecha, COUNT(*) AS n, AVG(usuarios) AS uAvg, MAX(usuarios) AS uMax, AVG(util) AS cAvg, MAX(util) AS cMax
         FROM rd_lecturas WHERE fecha BETWEEN ? AND ? GROUP BY ap_id, fecha ORDER BY fecha`).all(desde, hasta)
         .map((r) => [r.ap_id, r.fecha, r.n, r.uAvg === null ? null : Math.round(r.uAvg * 100) / 100, r.uMax, r.cAvg === null ? null : Math.round(r.cAvg * 100) / 100, r.cMax]),

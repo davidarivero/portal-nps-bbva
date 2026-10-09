@@ -1,6 +1,6 @@
 {
   "name": "portal-nps-wlan",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "private": true,
   "description": "Portal de seguimiento de iniciativas Mejora NPS WLAN (Sipnology para BBVA)",
   "main": "server.js",

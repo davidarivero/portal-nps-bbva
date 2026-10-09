@@ -486,3 +486,6 @@ td.lv, .chip.lv { color: var(--ink); }
 @media (max-width: 680px) { .rd-tiles, .rd-filters { grid-template-columns: 1fr; } }
 @media print { .rd-heat { font-size: 7.5px; } .rd-heat td.num-col { min-width: 0; } .rd-sedes { grid-template-columns: repeat(5, 1fr); } .rd-sede { padding: 8px; } .rd-findings { grid-template-columns: repeat(2, 1fr); } .two { grid-template-columns: 1fr 1fr; } }
 @media print { .rd-sede, .rd-sedes, .rd-tiles, .fd, .rd-root .tests { break-inside: avoid; } .rd-sede .form-actions { display: none; } }
+
+.rd-scope { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 16px; background: var(--prog-bg); color: var(--ink); border-left: 4px solid var(--prog); border-radius: 0 var(--radius) var(--radius) 0; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 70px); z-index: 5; }
+@media (max-width: 680px) { .rd-scope { position: static; } }
