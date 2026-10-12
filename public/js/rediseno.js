@@ -161,59 +161,58 @@
   }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   async function sedeImage(C, s) {
-    const W = 1600, P = 48, days = C.days;
-    const aps = s.aps;
-    const cellW = Math.max(22, Math.min(86, Math.floor((W - P * 2 - 330 - 300) / Math.max(1, days.length))));
-    const gridY = 660, rowH = 30, H = gridY + 60 + aps.length * rowH + 90;
+    const K = await api('GET', '/api/rediseno/captura?sede=' + s.id);
+    if (!K.capturas.length) throw new Error(`${s.name} no tiene lecturas en días hábiles.`);
+    const W = 1600, P = 48, U = D.umbrales, aps = K.aps, caps = K.capturas, last = caps[caps.length - 1];
+    const WD = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], wd = (d) => WD[new Date(d + 'T00:00:00Z').getUTCDay()];
+    const short = (n) => { const m = n.match(/^AP-(P[^-]+)-.*-(\d+)$/); return m ? `${m[1]}-${m[2]}` : n.replace(/^AP-/, ''); };
     const F = 'font-family="Helvetica Neue, Arial, sans-serif"';
     const T = (x, y, txt, size, fill, weight = 400, anchor = 'start') => `<text x="${x}" y="${y}" ${F} font-size="${size}" fill="${fill}" font-weight="${weight}" text-anchor="${anchor}">${esc(txt)}</text>`;
-    const lv = (v) => (v === null || v === undefined ? '#f4f4f2' : HEX[level(v)]);
+    const val = (c, a, i) => (c.v[a.id] ? c.v[a.id][i] : null);
+    const nums = (arr) => arr.filter((v) => v !== null && v !== undefined);
+    const COL = ['#d3d3cf', '#a9aaae', '#6d6e71', HEX.red].slice(-caps.length);
+    while (COL.length < caps.length) COL.unshift('#e6e6e3');
+    const capLbl = (c) => `${wd(c.fecha)} ${dayMonth(c.fecha)}${c.hora ? ' · ' + c.hora : ''}`;
+    const Y1 = 200, CH1 = 300, Y2 = Y1 + CH1 + 150, CH2 = 220, H = Y2 + CH2 + 150;
     let g = `<rect width="${W}" height="${H}" fill="#ffffff"/><rect width="${W}" height="10" fill="${HEX.red}"/>`;
     g += `<image href="${await logo()}" x="${P}" y="34" width="150" height="112"/>`;
-    g += T(P + 190, 74, `${state.data.program.client} · Mejora NPS · WLAN`.toUpperCase(), 17, HEX.ink3, 600);
-    g += T(P + 190, 118, `Rediseño WLAN · ${s.name}`, 42, HEX.ink, 700);
-    g += T(P + 190, 152, `Periodo: ${fullDate(D.desde)} – ${fullDate(D.hasta)} · ${aps.length} AP · ${s.n} lecturas`, 20, HEX.ink2);
-    // indicadores
-    const tiles = [['Promedio de usuarios por AP', nf(s.uAvg), lv(s.uAvg), s.uAvg === null ? '' : LV[level(s.uAvg)]], ['Pico de usuarios en un AP', nf(s.uMax, 0), lv(s.uMax), s.uMax === null ? '' : LV[level(s.uMax)]],
-      ['Utilización de canal promedio', s.cAvg === null ? '—' : nf(s.cAvg, 0) + '%', '#f4f4f2', 'Informativa'], ['Utilización de canal pico', s.cMax === null ? '—' : nf(s.cMax, 0) + '%', '#f4f4f2', 'Informativa']];
-    const tw = (W - P * 2 - 3 * 20) / 4;
-    tiles.forEach((t, i) => { const x = P + i * (tw + 20); g += `<rect x="${x}" y="190" width="${tw}" height="130" rx="8" fill="${t[2]}"/>` + T(x + 20, 224, t[0].toUpperCase(), 14, HEX.ink2, 600) + T(x + 20, 288, t[1], 56, HEX.ink, 700) + T(x + tw - 20, 288, t[3], 18, HEX.ink2, 600, 'end'); });
-    // tendencia
-    const cx0 = P + 50, cx1 = W - P - 10, cy0 = 380, cy1 = 600;
-    const top = Math.max(D.umbrales.alarm * 1.15, ...s.series.map((d) => d.uMax || 0)) * 1.05;
-    const X = (i) => (days.length === 1 ? (cx0 + cx1) / 2 : cx0 + (i * (cx1 - cx0)) / (days.length - 1)), Y = (v) => cy0 + (1 - v / top) * (cy1 - cy0);
-    g += T(P, 362, 'Usuarios por AP: promedio y pico diario', 22, HEX.ink, 700);
-    g += `<g ${F} font-size="15"><line x1="${W - P - 420}" x2="${W - P - 390}" y1="356" y2="356" stroke="${HEX.series}" stroke-width="3"/><text x="${W - P - 382}" y="361" fill="${HEX.ink2}">Promedio</text><line x1="${W - P - 290}" x2="${W - P - 260}" y1="356" y2="356" stroke="${HEX.peak}" stroke-width="3"/><text x="${W - P - 252}" y="361" fill="${HEX.ink2}">Pico</text><line x1="${W - P - 190}" x2="${W - P - 160}" y1="356" y2="356" stroke="${HEX.critLine}" stroke-width="2" stroke-dasharray="6 5"/><text x="${W - P - 152}" y="361" fill="${HEX.ink2}">Criterio de ${D.umbrales.alarm}</text></g>`;
-    for (let v = 0; v <= top; v += 10) g += `<line x1="${cx0}" x2="${cx1}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v ? '#efefec' : '#c9c9c5'}"/>` + T(cx0 - 10, Y(v) + 5, v, 15, HEX.ink3, 400, 'end');
-    g += `<line x1="${cx0}" x2="${cx1}" y1="${Y(D.umbrales.alarm)}" y2="${Y(D.umbrales.alarm)}" stroke="${HEX.critLine}" stroke-width="2" stroke-dasharray="6 5"/>`;
-    for (const [key, color, wdt] of [['uMax', HEX.peak, 3], ['uAvg', HEX.series, 4]]) {
-      let dp = '', pen = false; s.series.forEach((d, i) => { if (d[key] === null) { pen = false; return; } dp += `${pen ? 'L' : 'M'}${X(i).toFixed(1)},${Y(d[key]).toFixed(1)} `; pen = true; });
-      g += `<path d="${dp}" fill="none" stroke="${color}" stroke-width="${wdt}" stroke-linejoin="round" stroke-linecap="round"/>`;
-    }
-    const step = Math.ceil(days.length / 14);
-    days.forEach((d, i) => { if (i % step === 0 || i === days.length - 1) g += T(X(i), cy1 + 26, dayMonth(d), 15, HEX.ink3, 400, i === 0 ? 'start' : i === days.length - 1 ? 'end' : 'middle'); });
-    // matriz por AP
-    g += T(P, gridY, 'Pico diario de usuarios por AP', 22, HEX.ink, 700);
-    const gx = P + 330, hy = gridY + 40;
-    const dstep = Math.ceil(46 / cellW);
-    days.forEach((d, i) => { if (i % dstep === 0) g += T(gx + i * cellW + cellW / 2, hy, dayMonth(d).replace(' ', ' '), 12, HEX.ink3, 400, 'middle'); });
-    const sx = gx + days.length * cellW + 24;
-    ['Prom.', 'Pico', 'Canal'].forEach((t, i) => { g += T(sx + i * 90 + 70, hy, t, 14, HEX.ink3, 600, 'end'); });
-    aps.forEach((a, r) => {
-      const y = hy + 12 + r * rowH;
-      g += T(P, y + 20, a.name, 16, HEX.ink, 600);
-      days.forEach((d, i) => { const row = a.byDay.get(d); const v = row ? row[4] : null; g += `<rect x="${gx + i * cellW + 1}" y="${y + 1}" width="${cellW - 2}" height="${rowH - 2}" rx="3" fill="${lv(v)}"/>`; if (v !== null && cellW >= 26) g += T(gx + i * cellW + cellW / 2, y + 20, v, 13, HEX.ink, 600, 'middle'); });
-      g += T(sx + 70, y + 20, nf(a.uAvg), 16, HEX.ink, 600, 'end') + T(sx + 160, y + 20, nf(a.uMax, 0), 16, HEX.ink, 700, 'end') + T(sx + 250, y + 20, a.cAvg === null ? '—' : nf(a.cAvg, 0) + '%', 16, HEX.ink2, 400, 'end');
-    });
-    const fy = H - 34;
-    [['good', `Bueno < ${D.umbrales.regular}`], ['regular', `Regular ${D.umbrales.regular} a ${D.umbrales.alarm}`], ['alarm', `Alarmante > ${D.umbrales.alarm}`]].forEach(([k, t], i) => { g += `<rect x="${P + i * 230}" y="${fy - 15}" width="18" height="18" rx="3" fill="${HEX[k]}"/>` + T(P + i * 230 + 26, fy, t, 15, HEX.ink2); });
+    g += T(P + 190, 70, `${state.data.program.client} · Mejora NPS · WLAN`.toUpperCase(), 17, HEX.ink3, 600);
+    g += T(P + 190, 114, `Rediseño WLAN · ${s.name}`, 42, HEX.ink, 700);
+    g += T(P + 190, 150, `${K.dias.map((d) => `${wd(d)} ${fullDate(d)}`).join(' y ')} · ${caps.length} ${caps.length === 1 ? 'captura' : 'capturas'} · ${aps.length} AP`, 22, HEX.ink2, 600);
+    // leyenda de capturas (común a las dos gráficas)
+    let lx = P;
+    caps.forEach((c, k) => { const t = capLbl(c) + (c === last ? ' (última)' : ''); g += `<rect x="${lx}" y="${Y1 - 30}" width="18" height="18" rx="3" fill="${COL[k]}"/>` + T(lx + 26, Y1 - 15, t, 16, c === last ? HEX.ink : HEX.ink2, c === last ? 700 : 500); lx += 26 + t.length * 9 + 34; });
+    const chart = (Y, hgt, title, idx, top, step, suf, refs) => {
+      const x0 = P + 54, x1 = W - P, y0 = Y + 50, y1 = Y + 50 + hgt;
+      const Yf = (v) => y0 + (1 - Math.min(v, top) / top) * (y1 - y0);
+      let o = T(P, Y + 24, title, 26, HEX.ink, 700);
+      for (let v = 0; v <= top; v += step) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${v ? '#efefec' : '#c9c9c5'}"/>` + T(x0 - 10, Yf(v) + 5, v + suf, 15, HEX.ink3, 400, 'end');
+      for (const [v, col, dash, lbl] of refs) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${col}" stroke-width="2" stroke-dasharray="${dash}"/>` + T(x1, Yf(v) - 7, lbl, 14, col, 700, 'end');
+      const gw = (x1 - x0) / aps.length, bw = Math.max(5, Math.min(34, (gw - 12) / caps.length - 2));
+      aps.forEach((a, i) => {
+        const gx0 = x0 + i * gw + (gw - caps.length * (bw + 2) + 2) / 2;
+        caps.forEach((c, k) => {
+          const v = val(c, a, idx); if (v === null) return;
+          const x = gx0 + k * (bw + 2), y = Yf(v);
+          o += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(1, y1 - y)}" rx="2" fill="${COL[k]}"/>`;
+          if (bw >= 13) { const isL = c === last; const ink = idx ? (isL ? HEX.ink : HEX.ink3) : v > U.alarm ? HEX.critLine : v >= U.regular ? HEX.warnLine : isL ? HEX.ink : HEX.ink3; o += T(x + bw / 2, y - 5, nf(v, 0), bw >= 18 ? 14 : 12, ink, isL || (!idx && v >= U.regular) ? 700 : 400, 'middle'); }
+        });
+        o += T(x0 + i * gw + gw / 2, y1 + 24, short(a.name), 14, HEX.ink2, 600, 'middle');
+      });
+      return o;
+    };
+    const uTop = Math.ceil(Math.max(U.alarm * 1.12, ...nums(aps.flatMap((a) => caps.map((c) => val(c, a, 0))))) / 10) * 10;
+    g += chart(Y1, CH1, 'Usuarios por AP', 0, uTop, 10, '', [[U.alarm, HEX.critLine, '6 5', `Criterio de rediseño (${U.alarm})`], [U.regular, HEX.warnLine, '2 5', `Regular (${U.regular})`]]);
+    g += chart(Y2, CH2, 'Ocupación de canal por AP (%) · informativa', 1, 100, 25, '%', []);
+    const fy = H - 30;
+    g += T(P, fy, 'AP identificado por piso y número (P32-05 = AP-P32-…-05). Sin sábados ni domingos.', 15, HEX.ink3);
     g += T(W - P, fy, `Generado el ${stamp(new Date().toISOString())} por ${state.user.name} · Sipnology`, 15, HEX.ink3, 400, 'end');
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
     const img = new Image();
     await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('No se pudo generar la imagen.')); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); });
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H; cv.getContext('2d').drawImage(img, 0, 0);
     const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `rediseno-wlan-${s.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}-${D.hasta}.png`;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `rediseno-wlan-${s.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}-${last.fecha}${last.hora ? '-' + last.hora.replace(':', '') : ''}.png`;
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
@@ -387,7 +386,7 @@
           h('p', { class: 'tile-sub' }, `${s.aps.length} AP · ${s.n} lecturas`, t && t.pct !== null ? ` · tendencia ${t.pct > 0 ? '+' : '−'}${nf(Math.abs(t.pct), 0)}%` : ''),
           h('div', { class: 'form-actions no-print' },
             h('button', { class: 'btn', type: 'button', onclick: () => { view.sede = scope && scope.id === s.id ? 'all' : String(s.id); view.autoFindings = view.sede !== 'all'; render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, scope && scope.id === s.id ? 'Ver todas' : 'Ver detalle'),
-            null));
+            s.n ? h('button', { class: 'btn', type: 'button', onclick: (e) => exportImage(e.currentTarget, C, s) }, 'Descargar imagen') : null));
       }))));
 
     // detalle por AP
@@ -422,6 +421,12 @@
   }
 
 
+  async function exportImage(btn, C, s) {
+    const t = btn.textContent; btn.disabled = true; btn.textContent = 'Generando…';
+    try { await sedeImage(C, s); toast(`Imagen de ${s.name} descargada`); } catch (err) { toast(err.message, 'error'); }
+    btn.disabled = false; btn.textContent = t;
+  }
+
   /* ---------- ventana de hallazgos ---------- */
   let lastFindings = [], lastScopeName = '', lastC = null, dialog = null;
   const icon = (k) => (k === 'alarm' ? '▲' : k === 'regular' ? '!' : k === 'good' ? '↓' : 'i');
@@ -445,7 +450,7 @@
   }
 
   window.PortalRediseno = {
-    exportItems: () => (lastC ? lastC.sedes.filter((s) => s.n).map((s) => ({ label: `Imagen PNG · ${s.name}`, hint: 'Reporte de la sede del periodo', onClick: () => sedeImage(lastC, s).then(() => toast(`Imagen de ${s.name} descargada`)).catch((e) => toast(e.message, 'error')) })) : []),
+    exportItems: () => (lastC ? lastC.sedes.filter((s) => s.n).map((s) => ({ label: `Imagen PNG · ${s.name}`, hint: 'Últimos 2 días hábiles, para WhatsApp', onClick: () => sedeImage(lastC, s).then(() => toast(`Imagen de ${s.name} descargada`)).catch((e) => toast(e.message, 'error')) })) : []),
     async mount(el, it) {
       view.autoFindings = true;
       root = el; kpi = it.kpis[0];

@@ -226,6 +226,28 @@ module.exports = function init(ctx) {
 
     if (p === '/api/rediseno/resumen' && m === 'GET') return send(res, 200, summary(url.searchParams)), true;
 
+    // Imagen para WhatsApp: los últimos 2 días hábiles (lunes a viernes) con lecturas de la sede, sin importar el periodo del tablero.
+    if (p === '/api/rediseno/captura' && m === 'GET') {
+      const sedeId = Number(url.searchParams.get('sede'));
+      const sede = db.prepare('SELECT id, name FROM rd_sedes WHERE id = ?').get(sedeId);
+      if (!sede) throw new HttpError(404, 'La sede no existe.');
+      const aps = db.prepare('SELECT id, name, piso FROM rd_aps WHERE sede_id = ? ORDER BY name').all(sedeId);
+      const fechas = db.prepare('SELECT DISTINCT l.fecha FROM rd_lecturas l JOIN rd_aps a ON a.id = l.ap_id WHERE a.sede_id = ? ORDER BY l.fecha DESC LIMIT 60').all(sedeId).map((r) => r.fecha);
+            const habil = (f) => ![0, 6].includes(new Date(f + 'T00:00:00Z').getUTCDay());
+      const dias = fechas.filter(habil).slice(0, 2).sort();
+      if (!dias.length) return send(res, 200, { sede, aps, dias: [], capturas: [] }), true;
+      const rows = db.prepare(`SELECT l.ap_id AS apId, l.fecha, l.slot, l.hora, l.usuarios, l.util FROM rd_lecturas l JOIN rd_aps a ON a.id = l.ap_id
+        WHERE a.sede_id = ? AND l.fecha IN (${dias.map(() => '?').join(',')}) ORDER BY l.fecha, l.slot`).all(sedeId, ...dias);
+      const caps = new Map();
+      for (const r of rows) {
+        const k = `${r.fecha}|${r.slot}`;
+        if (!caps.has(k)) caps.set(k, { fecha: r.fecha, slot: r.slot, hora: r.hora, v: {} });
+        const c = caps.get(k); if (!c.hora && r.hora) c.hora = r.hora;
+        c.v[r.apId] = [r.usuarios, r.util];
+      }
+      return send(res, 200, { sede, aps, dias, capturas: [...caps.values()].sort((x, y) => (x.fecha + (x.hora || '') + x.slot).localeCompare(y.fecha + (y.hora || '') + y.slot)) }), true;
+    }
+
     if (p === '/api/rediseno/lecturas' && m === 'GET') {
       const sedeId = Number(url.searchParams.get('sede')); const fecha = url.searchParams.get('fecha');
       if (!isDate(fecha)) throw new HttpError(400, 'Fecha no válida.');
