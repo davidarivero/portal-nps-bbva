@@ -22,8 +22,10 @@
   /* =========================================================
    * Tablero de recorridos
    * ========================================================= */
-  async function viewDashboard() {
-    await loadCatalog();
+  /** Tablero de recorridos dentro de la página de la iniciativa "Recorridos proactivos". */
+  async function viewDashboard(target) {
+    const put = (...n) => target.append(...n.flat().filter((x) => x !== null && x !== undefined && x !== false));
+    await loadCatalog(true);
     if (!filters.hasta) { filters.hasta = todayStr(); filters.desde = addDays(filters.hasta, -29); }
     const { recorridos: all } = await api('GET', `/api/recorridos?desde=${filters.desde}&hasta=${filters.hasta}`);
     const walks = all.filter((w) => (!filters.sede || String(w.sedeId) === filters.sede) && (!filters.ssid || w.ssid === filters.ssid));
@@ -46,7 +48,7 @@
     const total = tally.good + tally.regular + tally.alarm;
     const days = new Set(walks.map((w) => w.fecha)).size;
 
-    const onFilter = () => { window.Portal.route(); };
+    const onFilter = async () => { const y = window.scrollY; target.textContent = ''; await viewDashboard(target); window.scrollTo(0, y); };
     const sel = (id, label, value, options, on) => h('div', { class: 'field' }, h('label', { for: id }, label),
       h('select', { id, onchange: (e) => { on(e.target.value); onFilter(); } }, options.map(([v, l]) => h('option', { value: v, selected: String(v) === String(value) }, l))));
     const dateInput = (id, label, key) => h('div', { class: 'field' }, h('label', { for: id }, label),
@@ -55,17 +57,13 @@
     const periodText = `${fullDate(filters.desde)} – ${fullDate(filters.hasta)}`;
     const scopeText = [filters.sede ? catalog.sedes.find((s) => String(s.id) === filters.sede)?.name : 'Todas las sedes', filters.ssid || 'Todos los SSID'].join(' · ');
 
-    add(
+    put(
       h('div', { class: 'print-head only-print' },
         h('img', { src: '/img/sipnology-logo.png', alt: 'Sipnology' }),
         h('div', {}, h('p', { class: 'eyebrow' }, `${state.data.program.client} · Mejora NPS · WLAN`), h('h1', {}, 'Reporte de recorridos proactivos'),
           h('p', {}, `Periodo: ${periodText} · ${scopeText}`), h('p', { class: 'muted' }, `Generado el ${fullDate(todayStr())} por ${state.user.name}`))),
-      h('header', { class: 'page-head rec-head no-print' },
-        h('div', {}, h('p', { class: 'eyebrow' }, 'Salud del entorno Wi-Fi'), h('h1', {}, 'Recorridos proactivos'), h('p', { class: 'muted' }, 'Avance diario y resultados de las pruebas de cada recorrido.')),
-        h('div', { class: 'form-actions' },
-          h('button', { class: 'btn', type: 'button', onclick: () => window.print() }, 'Exportar a PDF'),
-          h('a', { class: 'btn', href: `/api/recorridos/export.csv?desde=${filters.desde}&hasta=${filters.hasta}` }, 'Descargar Excel (CSV)'),
-          canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null)),
+      h('header', { class: 'panel-head rec-head no-print' },
+        h('div', {}, h('h2', {}, 'Seguimiento diario de recorridos'), h('p', { class: 'muted' }, 'Cada recorrido completo suma al indicador "Recorridos por semana" de esta iniciativa.'))),
       h('section', { class: 'filters no-print' },
         dateInput('rf-desde', 'Desde', 'desde'), dateInput('rf-hasta', 'Hasta', 'hasta'),
         sel('rf-sede', 'Sede', filters.sede, [['', 'Todas'], ...catalog.sedes.map((s) => [s.id, s.name])], (v) => { filters.sede = v; }),
@@ -73,14 +71,19 @@
     );
 
     if (!walks.length) {
-      add(h('section', { class: 'panel' }, h('p', { class: 'empty' }, 'No hay recorridos en este periodo. ',
+      const t0 = catalog.totales || {};
+      put(h('section', { class: 'rec-tiles' }, h('div', { class: 'tile tile-total' }, h('span', { class: 'tile-label' }, 'Realizados a la fecha'), h('span', { class: 'tile-num' }, t0.completos || 0), h('span', { class: 'tile-sub' }, t0.completos ? `Recorridos completos desde el ${fullDate(t0.desde)}` : 'Aún no hay recorridos completos'))));
+      put(h('section', { class: 'panel' }, h('p', { class: 'empty' }, 'No hay recorridos en este periodo. ',
         canWrite() ? h('a', { href: '#/recorrido/nuevo' }, 'Registrar el primero') : null)));
       return;
     }
 
     const seg = (k) => (tally[k] ? h('div', { class: 'mix-seg lv-' + k, style: `flex:${tally[k]}`, title: `${LV[k]}: ${tally[k]}` }) : null);
-    add(h('section', { class: 'rec-tiles' },
-      h('div', { class: 'tile' }, h('span', { class: 'tile-label' }, 'Recorridos completos'), h('span', { class: 'tile-num' }, completos.length),
+    const tot = catalog.totales || {};
+    put(h('section', { class: 'rec-tiles' },
+      h('div', { class: 'tile tile-total' }, h('span', { class: 'tile-label' }, 'Realizados a la fecha'), h('span', { class: 'tile-num' }, tot.completos || 0),
+        h('span', { class: 'tile-sub' }, tot.completos ? `Recorridos completos desde el ${fullDate(tot.desde)}, en ${tot.sedes} ${tot.sedes === 1 ? 'sede' : 'sedes'}${tot.enCurso ? ` · ${tot.enCurso} en curso` : ''}` : 'Aún no hay recorridos completos')),
+      h('div', { class: 'tile' }, h('span', { class: 'tile-label' }, 'Completos en el periodo'), h('span', { class: 'tile-num' }, completos.length),
         h('span', { class: 'tile-sub' }, `${walks.length - completos.length} en curso · ${days} ${days === 1 ? 'día' : 'días'} con recorridos`)),
       h('div', { class: 'tile tile-wide' }, h('span', { class: 'tile-label' }, `Resultados medidos (${total})`),
         total ? h('div', { class: 'mix', role: 'img', 'aria-label': `Buenos ${tally.good}, regulares ${tally.regular}, alarmantes ${tally.alarm}` }, seg('good'), seg('regular'), seg('alarm')) : h('span', { class: 'muted' }, 'Aún no hay resultados capturados'),
@@ -92,7 +95,7 @@
     const dayList = span <= 62 ? Array.from({ length: span }, (_, i) => addDays(filters.desde, i)) : [...new Set(walks.map((w) => w.fecha))].sort();
     const perDay = dayList.map((d) => ({ d, done: walks.filter((w) => w.fecha === d && w.status === 'completo').length, open: walks.filter((w) => w.fecha === d && w.status !== 'completo').length }));
     const chart = h('div', { class: 'chart daily' });
-    add(h('section', { class: 'panel' }, h('h2', {}, 'Avance diario'), chart,
+    put(h('section', { class: 'panel' }, h('h2', {}, 'Avance diario'), chart,
       h('p', { class: 'legend' }, h('span', { class: 'lg lg-bar' }, 'Recorridos completos'), h('span', { class: 'lg lg-bar-open' }, 'En curso'))));
     drawDaily(chart, perDay);
 
@@ -109,7 +112,7 @@
           h('td', { class: 'muted th-text' }, P.thText(s.th)), h('td', { class: 'num-col plain' }, s.values.length), cell(min), cell(avg), cell(max)));
       }
     }
-    add(h('section', { class: 'panel' }, h('h2', {}, 'Valores mínimos, promedio y máximos del periodo'),
+    put(h('section', { class: 'panel' }, h('h2', {}, 'Valores mínimos, promedio y máximos del periodo'),
       statRows.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table stats' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Indicador'), h('th', {}, 'Umbrales'), h('th', { class: 'num-col' }, 'Mediciones'), h('th', { class: 'num-col' }, 'Mínimo'), h('th', { class: 'num-col' }, 'Promedio'), h('th', { class: 'num-col' }, 'Máximo'))),
         h('tbody', {}, statRows))) : h('p', { class: 'empty' }, 'Aún no hay resultados medidos en este periodo.')));
@@ -130,11 +133,11 @@
         pings.map((t) => [val(w, t, 'lat'), val(w, t, 'perdida')]),
         [st1, st2].map((t) => [val(w, t, 'descarga'), val(w, t, 'carga'), val(w, t, 'latencia')]), val(w, meet, 'retraso'),
         h('td', { class: 'nowrap' }, w.status === 'completo' ? 'Completo' : `En curso ${doneCount(w)}/${P.TESTS.length}`)))));
-    add(h('section', { class: 'panel' }, h('h2', {}, `Recorridos del periodo (${walks.length})`),
+    put(h('section', { class: 'panel' }, h('h2', {}, `Recorridos del periodo (${walks.length})`),
       h('p', { class: 'legend' }, ['good', 'regular', 'alarm'].map((k) => h('span', {}, h('i', { class: 'sw lv-' + k }), LV[k])), h('span', { class: 'muted' }, 'ms = latencia promedio · % = pérdida de paquetes · ↓ ↑ = Mb/s')),
       h('div', { class: 'table-wrap' }, matrix)));
 
-    if (catalog.storage) add(h('p', { class: 'muted no-print storage' }, `Evidencias guardadas: ${catalog.storage.files} archivos, ${nf(catalog.storage.bytes / 1048576, 1)} MB en el disco del servidor.`));
+    if (catalog.storage) put(h('p', { class: 'muted no-print storage' }, `Evidencias guardadas: ${catalog.storage.files} archivos, ${nf(catalog.storage.bytes / 1048576, 1)} MB en el disco del servidor.`));
   }
 
   function drawDaily(box, perDay) {
@@ -237,7 +240,7 @@
           h('span', { class: 'hint' }, isAdmin() ? 'Como administrador puedes asignar o reasignar el recorrido; el cambio queda en la trazabilidad.' : 'Es el usuario con el que iniciaste sesión.')),
         h('div', { class: 'field' }, h('label', { for: 'r-notas' }, 'Notas', h('span', { class: 'optional' }, ' (opcional)')), h('input', { id: 'r-notas', type: 'text', maxlength: 1000, value: w?.notas || '' }))),
       similarBox, error,
-      h('div', { class: 'form-actions' }, submit, h('a', { class: 'btn', href: w ? '#/recorrido/' + w.id : '#/recorridos', onclick: w ? (e) => { e.preventDefault(); onSaved(null); } : null }, 'Cancelar')));
+      h('div', { class: 'form-actions' }, submit, h('a', { class: 'btn', href: w ? '#/recorrido/' + w.id : '#/iniciativa/recorridos', onclick: w ? (e) => { e.preventDefault(); onSaved(null); } : null }, 'Cancelar')));
     form.querySelectorAll('input[type=radio]').forEach((r) => { if (r.getAttribute('checked') !== null) r.checked = true; });
 
     async function save(areaConfirm, areaOverride) {
@@ -278,7 +281,7 @@
   async function viewNew() {
     if (!canWrite()) return add(h('p', { class: 'empty' }, 'Tu usuario es de consulta: no puede registrar recorridos.'));
     await loadCatalog(true);
-    add(h('nav', { class: 'crumb' }, h('a', { href: '#/recorridos' }, '← Recorridos')),
+    add(h('nav', { class: 'crumb' }, h('a', { href: '#/iniciativa/recorridos' }, '← Recorridos proactivos')),
       h('header', { class: 'page-head' }, h('h1', {}, 'Nuevo recorrido'), h('p', { class: 'muted' }, 'Primero los datos del recorrido; en el siguiente paso subes la evidencia de cada prueba.')),
       headerForm(null, (id) => { window.location.hash = '#/recorrido/' + id; }));
   }
@@ -348,11 +351,11 @@
         catch (err) { missBox.textContent = ''; missBox.append(err.message, err.faltantes ? h('ul', {}, err.faltantes.map((f) => h('li', {}, `${f.label}: ${f.reason}`))) : null); missBox.hidden = false; }
       } }, 'Marcar como completo') : null,
       mayEdit(w) && w.status === 'completo' ? h('button', { class: 'btn', type: 'button', onclick: async () => { try { await apiX('POST', `/api/recorridos/${id}/reabrir`, {}); toast('Recorrido reabierto'); await refresh(); } catch (err) { toast(err.message, 'error'); } } }, 'Reabrir para corregir') : null,
-      h('button', { class: 'btn', type: 'button', onclick: () => window.print() }, 'Exportar a PDF'),
-      isAdmin() || editable ? h('button', { class: 'link-btn', type: 'button', onclick: (e) => confirmInline(e.currentTarget, async () => { await api('DELETE', '/api/recorridos/' + id); toast('Recorrido eliminado'); window.location.hash = '#/recorridos'; }) }, 'Eliminar recorrido') : null);
+      window.Portal.exportMenu(() => [window.Portal.pdfItem('Este recorrido con sus evidencias')]),
+      isAdmin() || editable ? h('button', { class: 'link-btn', type: 'button', onclick: (e) => confirmInline(e.currentTarget, async () => { await api('DELETE', '/api/recorridos/' + id); toast('Recorrido eliminado'); window.location.hash = '#/iniciativa/recorridos'; }) }, 'Eliminar recorrido') : null);
 
     add(
-      h('nav', { class: 'crumb no-print' }, h('a', { href: '#/recorridos' }, '← Recorridos')),
+      h('nav', { class: 'crumb no-print' }, h('a', { href: '#/iniciativa/recorridos' }, '← Recorridos proactivos')),
       h('header', { class: 'detail-head' },
         h('div', {}, h('p', { class: 'eyebrow' }, 'Recorrido proactivo'), h('h1', {}, `${shortSede(w.sede)} · ${w.piso} · ${w.area}`),
           h('div', { class: 'pills' }, h('span', { class: 'pill ' + (w.status === 'completo' ? 'pill-good' : 'pill-prog') }, h('span', { class: 'pill-icon', 'aria-hidden': 'true' }, w.status === 'completo' ? '✓' : '→'), w.status === 'completo' ? 'Completo' : 'En curso'), levelPill(walkLevel(w)))),
@@ -483,8 +486,16 @@
     return card;
   }
 
+  window.PortalRecorridos = {
+    exportItems: () => (filters.desde ? [{ label: 'Excel (CSV) de recorridos', hint: `Resultados de cada prueba, ${dayMonth(filters.desde)} – ${dayMonth(filters.hasta)}`, href: `/api/recorridos/export.csv?desde=${filters.desde}&hasta=${filters.hasta}` }] : []),
+    async mount(el) {
+      el.textContent = ''; el.append(h('p', { class: 'loading' }, 'Cargando los recorridos…'));
+      try { const box = h('div', { class: 'rd-root' }); await viewDashboard(box); el.textContent = ''; el.append(box); } catch (err) { el.textContent = ''; el.append(h('p', { class: 'empty' }, err.message)); }
+    },
+  };
   window.PortalRoutes = {
-    recorridos: () => viewDashboard(),
+    // la dirección anterior lleva ahora a la iniciativa
+    recorridos: () => { window.location.replace('#/iniciativa/recorridos'); },
     recorrido: (parts) => (parts[1] === 'nuevo' ? viewNew() : /^\d+$/.test(parts[1] || '') ? viewDetail(parts[1]) : add(h('p', { class: 'empty' }, 'El recorrido no existe.'))),
   };
 })();

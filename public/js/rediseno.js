@@ -333,10 +333,9 @@
         h('div', { class: 'form-actions' },
           canWrite() ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { view.panel = view.panel === 'excel' ? null : 'excel'; render(); } }, 'Cargar Excel') : null,
           canWrite() ? h('button', { class: 'btn', type: 'button', onclick: () => { view.panel = view.panel === 'manual' ? null : 'manual'; render(); } }, 'Capturar lecturas') : null,
-          h('button', { class: 'btn', type: 'button', onclick: () => window.print() }, 'Exportar a PDF'),
-          scope ? h('button', { class: 'btn', type: 'button', onclick: (e) => exportImage(e.currentTarget, C, scope) }, 'Descargar imagen de la sede') : null)),
+          C.rows.length ? h('button', { class: 'btn btn-findings', type: 'button', onclick: () => openFindings() }, 'Hallazgos', h('span', { class: 'badge' + (lastFindings.some((f) => f.kind === 'alarm') ? ' badge-alarm' : '') }, '…')) : null)),
       h('div', { class: 'rd-filters' }, dateInput('rd-desde', 'Desde', 'desde'), dateInput('rd-hasta', 'Hasta', 'hasta'),
-        h('div', { class: 'field' }, h('label', { for: 'rd-sede' }, 'Sede'), h('select', { id: 'rd-sede', onchange: (e) => { view.sede = e.target.value; render(); } }, h('option', { value: 'all' }, 'Todas las sedes'), D.sedes.map((s) => h('option', { value: s.id, selected: String(s.id) === String(view.sede) }, s.name)))),
+        h('div', { class: 'field' }, h('label', { for: 'rd-sede' }, 'Sede'), h('select', { id: 'rd-sede', onchange: (e) => { view.sede = e.target.value; view.autoFindings = view.sede !== 'all'; render(); } }, h('option', { value: 'all' }, 'Todas las sedes'), D.sedes.map((s) => h('option', { value: s.id, selected: String(s.id) === String(view.sede) }, s.name)))),
         h('div', { class: 'field' }, h('span', { class: 'label' }, 'Periodo rápido'), h('div', { class: 'tabs' }, [['2 semanas', 14], ['1 mes', 30], ['3 meses', 90], ['Todo', 0]].map(([t, n]) => h('button', { class: 'tab', type: 'button', onclick: () => setRange(n) }, t))))),
       h('p', { class: 'muted' }, D.rango.min ? `Hay lecturas del ${fullDate(D.rango.min)} al ${fullDate(D.rango.max)}.` : 'Aún no hay lecturas cargadas.')));
     if (scope) push(h('div', { class: 'rd-scope no-print', role: 'status' },
@@ -347,10 +346,10 @@
 
     if (!C.rows.length) { push(h('section', { class: 'panel' }, h('p', { class: 'empty' }, 'No hay lecturas en este periodo. Amplía las fechas o carga información.'))); root.append(...kids); return; }
 
-    // hallazgos
+    // hallazgos: ventana aparte (y copia solo para el PDF)
     const fnd = findings(C, scope);
-    push(h('section', { class: 'panel' }, h('h2', {}, 'Hallazgos del periodo'),
-      h('ul', { class: 'rd-findings' }, fnd.map((f) => h('li', { class: 'fd fd-' + f.kind }, h('span', { class: 'fd-icon', 'aria-hidden': 'true' }, f.kind === 'alarm' ? '▲' : f.kind === 'regular' ? '!' : f.kind === 'good' ? '↓' : 'i'), h('div', {}, h('strong', {}, f.title), h('p', {}, f.text)))))));
+    lastFindings = fnd; lastScopeName = S.name; lastC = C;
+    push(h('section', { class: 'panel only-print-block' }, h('h2', {}, 'Hallazgos del periodo'), findingsList(fnd)));
 
     // estadística general (o de la sede elegida)
     const base = kpi && kpi.baseline !== null && kpi.baseline !== undefined ? kpi.baseline : null;
@@ -387,8 +386,8 @@
           s.n ? spark(s.series) : null,
           h('p', { class: 'tile-sub' }, `${s.aps.length} AP · ${s.n} lecturas`, t && t.pct !== null ? ` · tendencia ${t.pct > 0 ? '+' : '−'}${nf(Math.abs(t.pct), 0)}%` : ''),
           h('div', { class: 'form-actions no-print' },
-            h('button', { class: 'btn', type: 'button', onclick: () => { view.sede = scope && scope.id === s.id ? 'all' : String(s.id); render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, scope && scope.id === s.id ? 'Ver todas' : 'Ver detalle'),
-            s.n ? h('button', { class: 'btn', type: 'button', onclick: (e) => exportImage(e.currentTarget, C, s) }, 'Descargar imagen') : null));
+            h('button', { class: 'btn', type: 'button', onclick: () => { view.sede = scope && scope.id === s.id ? 'all' : String(s.id); view.autoFindings = view.sede !== 'all'; render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, scope && scope.id === s.id ? 'Ver todas' : 'Ver detalle'),
+            null));
       }))));
 
     // detalle por AP
@@ -414,18 +413,41 @@
           h('td', { class: 'actions no-print' }, !r.deshecha && c.tipo !== 'inicial' && (isAdmin() || (c.tipo === 'manual' && c.user === state.user.name)) ? h('button', { class: 'link-btn', type: 'button', onclick: (e) => confirmInline(e.currentTarget, async () => { const x = await api('DELETE', '/api/rediseno/cargas/' + c.id); toast(`Carga deshecha: ${x.lecturas} lecturas eliminadas`); await reload(); }) }, 'Deshacer') : null)); }))))));
 
     root.append(...kids);
+    const b = root.querySelector('.btn-findings .badge');
+    if (b) { b.textContent = fnd.length; b.classList.toggle('badge-alarm', fnd.some((f) => f.kind === 'alarm')); }
+    if (view.autoFindings && fnd.length) { view.autoFindings = false; openFindings(); }
     const sr = S.series;
     lineChart(c1, { title: 'Usuarios por AP por día', days: C.days, max: D.umbrales.alarm, series: [{ name: 'Pico', values: sr.map((d) => d.uMax), cls: 's-peak' }, { name: 'Promedio', values: sr.map((d) => (d.uAvg === null ? null : Math.round(d.uAvg * 10) / 10)), cls: '' }], refs: [{ value: D.umbrales.alarm, label: `Criterio ${D.umbrales.alarm}`, kind: 'limit' }] });
     lineChart(c2, { title: 'Utilización de canal por día', days: C.days, suffix: '%', series: [{ name: 'Pico', values: sr.map((d) => d.cMax), cls: 's-peak' }, { name: 'Promedio', values: sr.map((d) => (d.cAvg === null ? null : Math.round(d.cAvg * 10) / 10)), cls: '' }] });
   }
-  async function exportImage(btn, C, s) {
-    const t = btn.textContent; btn.disabled = true; btn.textContent = 'Generando…';
-    try { await sedeImage(C, s); toast(`Imagen de ${s.name} descargada`); } catch (err) { toast(err.message, 'error'); }
-    btn.disabled = false; btn.textContent = t;
+
+
+  /* ---------- ventana de hallazgos ---------- */
+  let lastFindings = [], lastScopeName = '', lastC = null, dialog = null;
+  const icon = (k) => (k === 'alarm' ? '▲' : k === 'regular' ? '!' : k === 'good' ? '↓' : 'i');
+  const findingsList = (fnd) => h('ul', { class: 'rd-findings' }, fnd.map((f) => h('li', { class: 'fd fd-' + f.kind }, h('span', { class: 'fd-icon', 'aria-hidden': 'true' }, icon(f.kind)), h('div', {}, h('strong', {}, f.title), h('p', {}, f.text)))));
+  function openFindings() {
+    if (!dialog || !dialog.isConnected) {
+      dialog = h('dialog', { class: 'rd-dialog', 'aria-labelledby': 'rd-dlg-title' });
+      dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+      document.body.append(dialog);
+    }
+    const alarms = lastFindings.filter((f) => f.kind === 'alarm').length;
+    dialog.textContent = '';
+    dialog.append(
+      h('header', { class: 'rd-dlg-head' },
+        h('div', {}, h('p', { class: 'eyebrow' }, `Rediseño WLAN · ${lastScopeName}`), h('h2', { id: 'rd-dlg-title' }, 'Hallazgos del periodo'),
+          h('p', { class: 'muted' }, `${fullDate(D.desde)} – ${fullDate(D.hasta)} · ${lastFindings.length} ${lastFindings.length === 1 ? 'hallazgo' : 'hallazgos'}${alarms ? `, ${alarms} de atención inmediata` : ''}`)),
+        h('button', { class: 'link-btn', type: 'button', 'aria-label': 'Cerrar', onclick: () => dialog.close() }, 'Cerrar')),
+      lastFindings.length ? findingsList(lastFindings) : h('p', { class: 'empty' }, 'Sin hallazgos para este periodo.'),
+      h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialog.close() }, 'Entendido')));
+    if (!dialog.open) dialog.showModal();
   }
 
   window.PortalRediseno = {
+    exportItems: () => (lastC ? lastC.sedes.filter((s) => s.n).map((s) => ({ label: `Imagen PNG · ${s.name}`, hint: 'Reporte de la sede del periodo', onClick: () => sedeImage(lastC, s).then(() => toast(`Imagen de ${s.name} descargada`)).catch((e) => toast(e.message, 'error')) })) : []),
     async mount(el, it) {
+      view.autoFindings = true;
       root = el; kpi = it.kpis[0];
       el.textContent = ''; el.append(h('p', { class: 'loading' }, 'Cargando el seguimiento diario…'));
       try { await reload(); } catch (err) { el.textContent = ''; el.append(h('p', { class: 'empty' }, err.message)); }

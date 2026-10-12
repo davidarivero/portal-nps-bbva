@@ -156,6 +156,7 @@ module.exports = function init(ctx) {
       areas: db.prepare('SELECT id, name FROM areas ORDER BY name COLLATE NOCASE').all(),
       ssids: SSIDS,
       ingenieros: db.prepare("SELECT id, name FROM users WHERE active = 1 AND role IN ('admin','ingeniero') ORDER BY name").all(),
+      totales: db.prepare("SELECT SUM(status = 'completo') AS completos, SUM(status <> 'completo') AS enCurso, MIN(CASE WHEN status = 'completo' THEN fecha END) AS desde, COUNT(DISTINCT CASE WHEN status = 'completo' THEN sede_id END) AS sedes FROM recorridos").get(),
       ocr: ocr.available,
     };
     if (user.role === 'admin') {

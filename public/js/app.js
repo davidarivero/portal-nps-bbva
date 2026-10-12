@@ -133,7 +133,6 @@
     const link = (href, label, key) => h('a', { href, class: 'nav-link' + (route === key ? ' is-active' : ''), 'aria-current': route === key ? 'page' : null }, label);
     if (!state.user.mustChange) {
       nav.append(link('#/', 'Tablero', 'tablero'));
-      nav.append(link('#/recorridos', 'Recorridos', 'recorridos'));
       if (canWrite()) nav.append(link('#/capturar', 'Capturar avance', 'capturar'));
       if (isAdmin()) nav.append(link('#/usuarios', 'Usuarios', 'usuarios'));
     }
@@ -197,12 +196,33 @@
           h('div', { class: 'tally-item tally-warn' }, h('span', { class: 'tally-num' }, attention), h('span', { class: 'tally-label' }, 'Requieren atención'))),
         h('div', { class: 'hero-actions no-present' },
           h('button', { class: 'btn', type: 'button', onclick: togglePresent }, 'Modo presentación'),
-          h('a', { class: 'btn', href: '/api/export.csv' }, 'Descargar CSV'),
+          exportMenu(() => [pdfItem('Tablero de iniciativas'), { label: 'Excel (CSV)', hint: 'Avances semanales de todas las iniciativas', href: '/api/export.csv' }]),
           canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar' }, 'Capturar avance') : null)),
       h('section', { class: 'cards', 'aria-label': 'Iniciativas' }, cards),
       h('button', { class: 'btn exit-present', type: 'button', onclick: togglePresent }, 'Salir de presentación'),
     );
   }
+  /** Menú compacto "Exportar". getItems() se evalúa al abrir: [{label, hint, href | onClick}] */
+  function exportMenu(getItems, label = 'Exportar') {
+    const list = h('div', { class: 'xmenu-list', role: 'menu' });
+    const menu = h('details', { class: 'xmenu no-present no-print' }, h('summary', { class: 'btn btn-sm', 'aria-haspopup': 'menu' }, label, h('span', { class: 'caret', 'aria-hidden': 'true' }, '▾')), list);
+    const close = () => { menu.open = false; };
+    menu.addEventListener('toggle', () => {
+      if (!menu.open) return;
+      list.textContent = '';
+      for (const it of getItems().filter(Boolean)) {
+        const inner = [h('span', { class: 'xmenu-label' }, it.label), it.hint ? h('span', { class: 'xmenu-hint' }, it.hint) : null];
+        list.append(it.href
+          ? h('a', { class: 'xmenu-item', role: 'menuitem', href: it.href, onclick: close }, inner)
+          : h('button', { class: 'xmenu-item', role: 'menuitem', type: 'button', onclick: (e) => { close(); it.onClick(e); } }, inner));
+      }
+      setTimeout(() => document.addEventListener('click', function off(e) { if (!menu.contains(e.target)) { close(); document.removeEventListener('click', off); } }), 0);
+    });
+    menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); menu.querySelector('summary').focus(); } });
+    return menu;
+  }
+  const pdfItem = (what) => ({ label: 'PDF', hint: what, onClick: () => window.print() });
+
   function togglePresent() {
     const on = document.body.classList.toggle('present');
     if (on) document.documentElement.requestFullscreen?.().catch(() => {});
@@ -247,7 +267,7 @@
     );
     const facts = [];
     if (main.deltaPct !== null && main.deltaPct !== undefined) facts.push(`Variación contra la métrica inicial: ${signed(main.deltaPct, 1)}%.`);
-    else if (main.delta) facts.push(`Variación contra la métrica inicial: ${signed(main.delta, k.decimals)} ${k.short}.`);
+    else if (main.delta) facts.push(`Variación contra la métrica inicial: ${signed(main.delta, k.decimals)} ${k.short.replace(/\.$/, '')}.`);
     if (k.note) facts.push(k.note);
 
     // gráfica con selector de indicador
@@ -323,7 +343,7 @@
           r.evidenceUrl ? h('a', { class: 'meta', href: r.evidenceUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Ver evidencia') : null),
         h('td', { class: 'nowrap' }, r.author, h('br'), h('span', { class: 'muted' }, localDate(r.updatedAt))),
         h('td', { class: 'actions no-present' },
-          r.auto && slug === 'recorridos' ? h('a', { class: 'link-btn', href: '#/recorridos' }, 'Ver recorridos') : null,
+          r.auto && slug === 'recorridos' ? h('button', { class: 'link-btn', type: 'button', onclick: () => document.getElementById('rec-root')?.scrollIntoView({ behavior: 'smooth' }) }, 'Ver recorridos') : null,
           canWrite() && !r.auto ? h('a', { class: 'link-btn', href: `#/capturar/${slug}/${r.week}` }, 'Editar') : null,
           !r.auto && (isAdmin() || (state.user.role === 'ingeniero' && r.createdBy === state.user.id))
             ? h('button', { class: 'link-btn', type: 'button', onclick: (e) => confirmInline(e.currentTarget, async () => { await api('DELETE', '/api/records/' + r.id); await reload('Registro eliminado'); }) }, 'Eliminar') : null))))))
@@ -348,16 +368,21 @@
       h('nav', { class: 'crumb no-present' }, h('a', { href: '#/' }, '← Tablero')),
       h('header', { class: 'detail-head' },
         h('div', {}, h('p', { class: 'eyebrow' }, it.subtitle), h('h1', {}, it.name), pill(main.status)),
-        slug === 'recorridos'
-          ? h('div', { class: 'form-actions no-present' }, h('a', { class: 'btn', href: '#/recorridos' }, 'Ver recorridos diarios'), canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null)
-          : slug === 'rediseno'
-            ? (canWrite() ? h('div', { class: 'form-actions no-present' }, h('button', { class: 'btn', type: 'button', onclick: () => window.PortalRediseno.open('manual') }, 'Capturar lecturas'), h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalRediseno.open('excel') }, 'Cargar Excel')) : null)
-            : canWrite() ? h('a', { class: 'btn btn-primary no-present', href: '#/capturar/' + slug }, 'Capturar avance') : null),
+        h('div', { class: 'form-actions head-actions no-present' },
+          exportMenu(() => [
+            pdfItem(slug === 'recorridos' ? 'Iniciativa y recorridos del periodo' : slug === 'rediseno' ? 'Iniciativa y seguimiento diario' : 'Esta iniciativa'),
+            ...(slug === 'recorridos' && window.PortalRecorridos ? window.PortalRecorridos.exportItems() : []),
+            ...(slug === 'rediseno' && window.PortalRediseno ? window.PortalRediseno.exportItems() : []),
+            { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
+          ]),
+          slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
+          slug !== 'recorridos' && slug !== 'rediseno' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
       h('p', { class: 'kpi-caption' }, k.label),
       trio,
       facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null,
       othersBox,
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
+      slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
       h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
         h('p', { class: 'legend' },
           h('span', { class: 'lg lg-line' }, 'Valor semanal'),
@@ -373,6 +398,7 @@
     );
     drawChart(main);
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
+    if (slug === 'recorridos' && window.PortalRecorridos) window.PortalRecorridos.mount(document.getElementById('rec-root'));
   }
 
   /** Confirmación en la misma página (sin diálogos del navegador). */
@@ -598,7 +624,7 @@
         h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Guardar contraseña'))));
   }
 
-  window.Portal = { h, add, api, toast, state, view, canWrite, isAdmin, confirmInline, dayMonth, fullDate, weekLabel, weekRange, todayStr, MONTHS, fmt, route: () => route() };
+  window.Portal = { h, add, api, toast, state, view, canWrite, isAdmin, confirmInline, exportMenu, pdfItem, dayMonth, fullDate, weekLabel, weekRange, todayStr, MONTHS, fmt, route: () => route() };
 
   /* ---------- ruteo ---------- */
   async function reload(msg, hash) {
@@ -611,7 +637,7 @@
     let key = parts[0] || 'tablero';
     if (state.user.mustChange) key = 'cuenta';
     view.textContent = '';
-    renderChrome(key === 'iniciativa' ? 'tablero' : key === 'recorrido' ? 'recorridos' : key);
+    renderChrome(key === 'iniciativa' || key === 'recorrido' ? 'tablero' : key);
     try {
       if (key === 'tablero') viewDashboard();
       else if (key === 'iniciativa') viewDetail(parts[1]);

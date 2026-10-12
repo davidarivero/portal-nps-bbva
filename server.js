@@ -382,6 +382,8 @@ async function api(req, res, url) {
 
   if (p === '/api/export.csv' && m === 'GET') {
     const data = loadData();
+    const only = url.searchParams.get('iniciativa');
+    if (only) data.records = data.records.filter((r) => r.initiative === only);
     const rows = [['Iniciativa', 'Semana (lunes)', 'Indicador', 'Valor', 'Sede', 'Detalle', 'Evidencia', 'Capturado por', 'Actualizado']];
     for (const r of data.records) {
       const it = data.initiatives.find((i) => i.slug === r.initiative);
@@ -392,7 +394,7 @@ async function api(req, res, url) {
     }
     return send(res, 200, '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\r\n'), {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': 'attachment; filename="avances-nps-wlan.csv"',
+      'Content-Disposition': `attachment; filename="avances-${only || 'nps-wlan'}.csv"`,
     });
   }
 
