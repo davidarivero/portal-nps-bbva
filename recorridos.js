@@ -47,15 +47,6 @@ const similar = (a, b) => a !== b && Math.min(a.length, b.length) >= 4 &&
 
 module.exports = function init(ctx) {
   const { db, HttpError, send, readJson, audit, now, DATA_DIR } = ctx;
-  // Compromiso con el cliente: 30 recorridos por semana (6 por día hábil). Solo cambia el valor original de 10;
-  // si un administrador ya puso otro número, se respeta.
-  {
-    const ini = db.prepare("SELECT id, def FROM initiatives WHERE slug = 'recorridos'").get();
-    if (ini) {
-      const def = JSON.parse(ini.def); const k = (def.kpis || [])[0];
-      if (k && k.target === 10) { k.target = 30; db.prepare('UPDATE initiatives SET def = ? WHERE id = ?').run(JSON.stringify(def), ini.id); audit(null, 'recorridos_compromiso', { antes: 10, despues: 30 }); }
-    }
-  }
   const EVID_DIR = path.join(DATA_DIR, 'evidencias');
   fs.mkdirSync(EVID_DIR, { recursive: true });
 

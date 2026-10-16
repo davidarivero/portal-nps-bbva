@@ -35,7 +35,7 @@ module.exports = {
         { key: 'recorridos', label: 'Recorridos realizados en la semana', integer: true, min: 0, max: 500, required: true },
       ],
       kpis: [
-        { key: 'recorridos', label: 'Recorridos por semana', unit: 'recorridos / semana', short: 'rec.', dir: 'up', baseline: 0, target: 30, op: '>=', decimals: 0, note: 'Sedes Reforma y Polanco.' },
+        { key: 'recorridos', label: 'Recorridos por semana', unit: 'recorridos / semana', short: 'rec.', dir: 'up', baseline: 0, target: 10, op: '>=', decimals: 0, note: 'Sedes Reforma y Polanco.' },
       ],
       sections: [
         { title: 'Pruebas que se realizan durante el recorrido', type: 'list', columns: true, items: [
