@@ -92,7 +92,10 @@
     atencion: { label: 'Requiere atención', cls: 'warn', icon: '!' },
     alerta: { label: 'Evaluar rediseño', cls: 'crit', icon: '▲' },
     sin_datos: { label: 'Sin datos', cls: 'none', icon: '–' },
+    seguimiento: { label: 'Seguimiento diario', cls: 'none', icon: '•' },
   };
+  // Iniciativas sin métrica inicial ni objetivo a la vista (se reportan solo con su seguimiento diario).
+  const NO_KPI = new Set(['recorridos']);
   function evaluate(it, kpi) {
     const s = series(it, kpi);
     const last = s[s.length - 1];
@@ -149,14 +152,26 @@
   /* ---------- tablero ejecutivo ---------- */
   function viewDashboard() {
     const { initiatives, records } = state.data;
-    const evals = initiatives.map((it) => ({ it, ev: evaluate(it, it.kpis[0]) }));
-    const count = (cls) => evals.filter((e) => STATUS[e.ev.status].cls === cls).length;
+    const evals = initiatives.map((it) => ({ it, ev: NO_KPI.has(it.slug) ? { ...evaluate(it, it.kpis[0]), status: 'seguimiento' } : evaluate(it, it.kpis[0]) }));
+    const scored = evals.filter((e) => !NO_KPI.has(e.it.slug));
+    const count = (cls) => scored.filter((e) => STATUS[e.ev.status].cls === cls).length;
     const good = count('good');
     const attention = count('warn') + count('crit');
     const lastWeek = records.length ? records[records.length - 1].week : null;
 
     const cards = evals.map(({ it, ev }) => {
       const k = ev.kpi;
+      if (NO_KPI.has(it.slug)) {
+        const total = state.data.recorridosTotal ?? ev.series.reduce((t, p) => t + (p.value || 0), 0);
+        return h('a', { class: 'card card-none', href: '#/iniciativa/' + it.slug },
+          h('div', { class: 'card-top' }, pill('seguimiento')),
+          h('h3', { class: 'card-title' }, it.name),
+          h('p', { class: 'card-kpi-name' }, 'Recorridos realizados a la fecha'),
+          h('div', { class: 'card-main' }, h('div', { class: 'card-value' }, h('span', { class: 'num' }, fmt(total, 0)), h('span', { class: 'unit' }, 'recorridos')),
+            ev.series.length > 1 ? Charts.spark(ev.series.map((p) => p.value), null) : null),
+          h('div', { class: 'bar bar-empty' }, h('span', { class: 'bar-label' }, 'Indicador de seguimiento')),
+          h('p', { class: 'card-foot' }, ev.last ? `Último corte: ${weekLabel(ev.last.rec.week).toLowerCase()} · ${weekRange(ev.last.rec.week)}` : 'Aún no hay recorridos'));
+      }
       const vals = [];
       if (k.baseline !== null && k.baseline !== undefined) vals.push(k.baseline);
       ev.series.forEach((p) => vals.push(p.value));
@@ -188,7 +203,7 @@
       h('section', { class: 'hero' },
         h('div', { class: 'hero-text' },
           h('p', { class: 'eyebrow' }, `${state.data.program.client} · Iniciativas enfocadas a mejora NPS · WLAN`),
-          h('h1', {}, h('span', { class: 'hero-num' }, `${good} de ${initiatives.length}`), ' iniciativas cumplen su objetivo o criterio'),
+          h('h1', {}, h('span', { class: 'hero-num' }, `${good} de ${scored.length}`), ' iniciativas cumplen su objetivo o criterio'),
           h('p', { class: 'hero-sub' }, lastWeek ? `Corte: ${weekLabel(lastWeek).toLowerCase()} (${weekRange(lastWeek)}).` : 'Aún no hay avances capturados.')),
         h('div', { class: 'tally' },
           h('div', { class: 'tally-item tally-good' }, h('span', { class: 'tally-num' }, good), h('span', { class: 'tally-label' }, 'En objetivo')),
@@ -247,6 +262,7 @@
   function viewDetail(slug) {
     const it = state.data.initiatives.find((i) => i.slug === slug);
     if (!it) return add(h('p', { class: 'empty' }, 'La iniciativa no existe. ', h('a', { href: '#/' }, 'Volver al tablero')));
+    const noKpi = NO_KPI.has(slug);
     const evals = it.kpis.map((k) => evaluate(it, k));
     const main = evals[0];
     const k = main.kpi;
@@ -350,7 +366,7 @@
       : h('p', { class: 'empty' }, 'Aún no hay avances capturados para esta iniciativa.');
 
     // metas (administrador)
-    const goals = isAdmin() ? h('details', { class: 'section no-present' }, h('summary', {}, 'Editar métricas inicial y objetivo'),
+    const goals = isAdmin() && !noKpi ? h('details', { class: 'section no-present' }, h('summary', {}, 'Editar métricas inicial y objetivo'),
       h('div', { class: 'section-body' }, it.kpis.map((kk) => h('form', { class: 'inline-form', onsubmit: async (e) => {
           e.preventDefault();
           const f = e.currentTarget;
@@ -367,7 +383,7 @@
     add(
       h('nav', { class: 'crumb no-present' }, h('a', { href: '#/' }, '← Tablero')),
       h('header', { class: 'detail-head' },
-        h('div', {}, h('p', { class: 'eyebrow' }, it.subtitle), h('h1', {}, it.name), pill(main.status)),
+        h('div', {}, h('p', { class: 'eyebrow' }, it.subtitle), h('h1', {}, it.name), noKpi ? null : pill(main.status)),
         h('div', { class: 'form-actions head-actions no-present' },
           exportMenu(() => [
             pdfItem(slug === 'recorridos' ? 'Iniciativa y recorridos del periodo' : slug === 'rediseno' ? 'Iniciativa y seguimiento diario' : 'Esta iniciativa'),
@@ -377,13 +393,13 @@
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
           slug !== 'recorridos' && slug !== 'rediseno' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
-      h('p', { class: 'kpi-caption' }, k.label),
-      trio,
-      facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null,
-      othersBox,
+      noKpi ? null : h('p', { class: 'kpi-caption' }, k.label),
+      noKpi ? null : trio,
+      !noKpi && facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null,
+      noKpi ? null : othersBox,
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
-      h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
+      noKpi ? null : h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
         h('p', { class: 'legend' },
           h('span', { class: 'lg lg-line' }, 'Valor semanal'),
           k.target !== null && k.target !== undefined ? h('span', { class: 'lg lg-target' }, 'Objetivo') : null,
@@ -396,7 +412,7 @@
       h('section', { class: 'panel' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
       h('section', { class: 'sections' }, (it.sections || []).map(renderSection), goals),
     );
-    drawChart(main);
+    if (!noKpi) drawChart(main);
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
     if (slug === 'recorridos' && window.PortalRecorridos) window.PortalRecorridos.mount(document.getElementById('rec-root'));
   }

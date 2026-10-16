@@ -63,7 +63,7 @@
         h('div', {}, h('p', { class: 'eyebrow' }, `${state.data.program.client} · Mejora NPS · WLAN`), h('h1', {}, 'Reporte de recorridos proactivos'),
           h('p', {}, `Periodo: ${periodText} · ${scopeText}`), h('p', { class: 'muted' }, `Generado el ${fullDate(todayStr())} por ${state.user.name}`))),
       h('header', { class: 'panel-head rec-head no-print' },
-        h('div', {}, h('h2', {}, 'Seguimiento diario de recorridos'), h('p', { class: 'muted' }, 'Cada recorrido completo suma al indicador "Recorridos por semana" de esta iniciativa.'))),
+        h('div', {}, h('h2', {}, 'Seguimiento diario de recorridos'), h('p', { class: 'muted' }, 'Recorridos realizados por sede y piso, con los resultados de cada prueba.'))),
       h('section', { class: 'filters no-print' },
         dateInput('rf-desde', 'Desde', 'desde'), dateInput('rf-hasta', 'Hasta', 'hasta'),
         sel('rf-sede', 'Sede', filters.sede, [['', 'Todas'], ...catalog.sedes.map((s) => [s.id, s.name])], (v) => { filters.sede = v; }),
