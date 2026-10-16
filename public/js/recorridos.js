@@ -78,11 +78,28 @@
       return;
     }
 
+    // compromiso: recorridos por semana (meta de la iniciativa) repartidos en 5 días hábiles
+    const meta = commitment();
+    const habil = (d) => ![0, 6].includes(new Date(d + 'T00:00:00Z').getUTCDay());
+    const corte = filters.hasta < todayStr() ? filters.hasta : todayStr();
+    const inicio = catalog.totales && catalog.totales.desde && catalog.totales.desde > filters.desde ? catalog.totales.desde : filters.desde; // no se cuenta antes del primer recorrido
+    let dHab = 0; for (let d = inicio; d <= corte; d = addDays(d, 1)) if (habil(d)) dHab += 1;
+    const esperado = Math.round(dHab * meta.diario);
+    const hechos = all.filter((w) => w.status === 'completo').length;
+    const pct = esperado ? Math.round((hechos / esperado) * 100) : null;
+    const lvl = pct === null ? '' : pct >= 100 ? ' lv-good' : pct >= 80 ? ' lv-regular' : ' lv-alarm';
+    const semana = (() => { const t = new Date(todayStr() + 'T00:00:00Z'); const mon = addDays(todayStr(), -((t.getUTCDay() + 6) % 7)); return { mon, n: all.filter((w) => w.status === 'completo' && w.fecha >= mon).length }; })();
+    const compTile = h('div', { class: 'tile tile-commit' + lvl },
+      h('span', { class: 'tile-label' }, 'Compromiso del periodo'),
+      h('span', { class: 'tile-num' }, `${hechos}`, h('small', {}, ` de ${esperado}`)),
+      h('span', { class: 'tile-sub' }, `${pct === null ? 'Sin días hábiles en el periodo' : pct + '% de cumplimiento'} · ${dHab} días hábiles desde el ${dayMonth(inicio)} · ${meta.semanal} por semana (${nf(meta.diario, 1)} por día), todas las sedes`),
+      filters.hasta >= semana.mon ? h('span', { class: 'tile-sub' }, `Esta semana: ${semana.n} de ${meta.semanal}`) : null);
     const seg = (k) => (tally[k] ? h('div', { class: 'mix-seg lv-' + k, style: `flex:${tally[k]}`, title: `${LV[k]}: ${tally[k]}` }) : null);
     const tot = catalog.totales || {};
     put(h('section', { class: 'rec-tiles' },
       h('div', { class: 'tile tile-total' }, h('span', { class: 'tile-label' }, 'Realizados a la fecha'), h('span', { class: 'tile-num' }, tot.completos || 0),
         h('span', { class: 'tile-sub' }, tot.completos ? `Recorridos completos desde el ${fullDate(tot.desde)}, en ${tot.sedes} ${tot.sedes === 1 ? 'sede' : 'sedes'}${tot.enCurso ? ` · ${tot.enCurso} en curso` : ''}` : 'Aún no hay recorridos completos')),
+      compTile,
       h('div', { class: 'tile' }, h('span', { class: 'tile-label' }, 'Completos en el periodo'), h('span', { class: 'tile-num' }, completos.length),
         h('span', { class: 'tile-sub' }, `${walks.length - completos.length} en curso · ${days} ${days === 1 ? 'día' : 'días'} con recorridos`)),
       h('div', { class: 'tile tile-wide' }, h('span', { class: 'tile-label' }, `Resultados medidos (${total})`),
@@ -96,8 +113,8 @@
     const perDay = dayList.map((d) => ({ d, done: walks.filter((w) => w.fecha === d && w.status === 'completo').length, open: walks.filter((w) => w.fecha === d && w.status !== 'completo').length }));
     const chart = h('div', { class: 'chart daily' });
     put(h('section', { class: 'panel' }, h('h2', {}, 'Avance diario'), chart,
-      h('p', { class: 'legend' }, h('span', { class: 'lg lg-bar' }, 'Recorridos completos'), h('span', { class: 'lg lg-bar-open' }, 'En curso'))));
-    drawDaily(chart, perDay);
+      h('p', { class: 'legend' }, h('span', { class: 'lg lg-bar' }, 'Recorridos completos'), h('span', { class: 'lg lg-bar-open' }, 'En curso'), h('span', { class: 'lg lg-target' }, `Compromiso diario (${nf(meta.diario, 1)} por día hábil)`))));
+    drawDaily(chart, perDay, meta.diario);
 
     // mínimos, promedios y máximos
     const statRows = [];
@@ -140,11 +157,16 @@
     if (catalog.storage) put(h('p', { class: 'muted no-print storage' }, `Evidencias guardadas: ${catalog.storage.files} archivos, ${nf(catalog.storage.bytes / 1048576, 1)} MB en el disco del servidor.`));
   }
 
-  function drawDaily(box, perDay) {
+  function commitment() {
+    const it = state.data.initiatives.find((i) => i.slug === 'recorridos');
+    const semanal = (it && it.kpis[0] && it.kpis[0].target) || 30;
+    return { semanal, diario: semanal / 5 };
+  }
+  function drawDaily(box, perDay, diario) {
     const NS = 'http://www.w3.org/2000/svg';
     const el = (t, a, txt) => { const n = document.createElementNS(NS, t); for (const [k, v] of Object.entries(a)) n.setAttribute(k, v); if (txt !== undefined) n.textContent = txt; return n; };
     const W = Math.max(320, box.clientWidth || 900), H = 220, m = { t: 14, r: 12, b: 38, l: 34 };
-    const max = Math.max(1, ...perDay.map((d) => d.done + d.open));
+    const max = Math.max(1, diario ? Math.ceil(diario * 1.2) : 0, ...perDay.map((d) => d.done + d.open));
     const step = max <= 5 ? 1 : max <= 10 ? 2 : Math.ceil(max / 5);
     const top = Math.ceil(max / step) * step;
     const y = (v) => m.t + (1 - v / top) * (H - m.t - m.b);
@@ -152,6 +174,7 @@
     const bw = Math.max(3, Math.min(26, band - 4));
     const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': 'Recorridos por día' });
     for (let v = 0; v <= top; v += step) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: v ? 'ch-grid' : 'ch-axis' })); svg.append(el('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'ch-tick' }, v)); }
+    if (diario) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(diario), y2: y(diario), class: 'ch-ref ch-ref-target' })); svg.append(el('text', { x: W - m.r, y: y(diario) - 5, 'text-anchor': 'end', class: 'ch-ref-label' }, `Compromiso: ${nf(diario, 1)} por día hábil`)); }
     const every = Math.ceil(perDay.length / Math.max(4, Math.floor((W - m.l - m.r) / 54)));
     const tip = document.createElement('div'); tip.className = 'ch-tip'; tip.hidden = true;
     perDay.forEach((d, i) => {

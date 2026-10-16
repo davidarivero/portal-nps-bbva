@@ -96,6 +96,7 @@
   };
   // Iniciativas sin métrica inicial ni objetivo a la vista (se reportan solo con su seguimiento diario).
   const NO_KPI = new Set(['recorridos']);
+  const mondayOfStr = (s) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
   function evaluate(it, kpi) {
     const s = series(it, kpi);
     const last = s[s.length - 1];
@@ -169,8 +170,12 @@
           h('p', { class: 'card-kpi-name' }, 'Recorridos realizados a la fecha'),
           h('div', { class: 'card-main' }, h('div', { class: 'card-value' }, h('span', { class: 'num' }, fmt(total, 0)), h('span', { class: 'unit' }, 'recorridos')),
             ev.series.length > 1 ? Charts.spark(ev.series.map((p) => p.value), null) : null),
-          h('div', { class: 'bar bar-empty' }, h('span', { class: 'bar-label' }, 'Indicador de seguimiento')),
-          h('p', { class: 'card-foot' }, ev.last ? `Último corte: ${weekLabel(ev.last.rec.week).toLowerCase()} · ${weekRange(ev.last.rec.week)}` : 'Aún no hay recorridos'));
+          (() => {
+            const meta = k.target || 30, wk = mondayOfStr(todayStr()), rec = ev.series.find((p) => p.rec.week === wk), n = rec ? rec.value : 0, pr = Math.min(1, n / meta);
+            return [h('dl', { class: 'card-refs' }, h('div', {}, h('dt', {}, 'Esta semana'), h('dd', {}, `${fmt(n, 0)} de ${meta}`)), h('div', {}, h('dt', {}, 'Compromiso'), h('dd', {}, `${meta} por semana`))),
+              h('div', { class: 'bar', role: 'img', 'aria-label': `Avance de la semana: ${Math.round(pr * 100)}% del compromiso` }, h('div', { class: 'bar-fill', style: `width:${Math.round(pr * 100)}%` }), h('span', { class: 'bar-label' }, `${Math.round(pr * 100)}% del compromiso semanal`))];
+          })(),
+          h('p', { class: 'card-foot' }, `${weekLabel(mondayOfStr(todayStr()))} · ${weekRange(mondayOfStr(todayStr()))}`));
       }
       const vals = [];
       if (k.baseline !== null && k.baseline !== undefined) vals.push(k.baseline);
@@ -366,7 +371,7 @@
       : h('p', { class: 'empty' }, 'Aún no hay avances capturados para esta iniciativa.');
 
     // metas (administrador)
-    const goals = isAdmin() && !noKpi ? h('details', { class: 'section no-present' }, h('summary', {}, 'Editar métricas inicial y objetivo'),
+    const goals = isAdmin() ? h('details', { class: 'section no-present' }, h('summary', {}, noKpi ? 'Editar compromiso de recorridos por semana' : 'Editar métricas inicial y objetivo'),
       h('div', { class: 'section-body' }, it.kpis.map((kk) => h('form', { class: 'inline-form', onsubmit: async (e) => {
           e.preventDefault();
           const f = e.currentTarget;
@@ -375,9 +380,9 @@
             await reload('Métricas actualizadas');
           } catch (err) { toast(err.message, 'error'); }
         } },
-        h('strong', { class: 'goal-name' }, kk.label),
-        h('label', {}, 'Inicial', h('input', { name: 'baseline', type: 'number', step: 'any', min: 0, value: kk.baseline ?? '', id: `g-b-${kk.key}` })),
-        h('label', {}, 'Objetivo', h('input', { name: 'target', type: 'number', step: 'any', min: 0, value: kk.target ?? '', id: `g-t-${kk.key}` })),
+        noKpi ? null : h('strong', { class: 'goal-name' }, kk.label),
+        noKpi ? h('input', { name: 'baseline', type: 'hidden', value: kk.baseline ?? '' }) : h('label', {}, 'Inicial', h('input', { name: 'baseline', type: 'number', step: 'any', min: 0, value: kk.baseline ?? '', id: `g-b-${kk.key}` })),
+        h('label', {}, noKpi ? 'Recorridos comprometidos por semana' : 'Objetivo', h('input', { name: 'target', type: 'number', step: 'any', min: 0, value: kk.target ?? '', id: `g-t-${kk.key}` })),
         h('button', { class: 'btn', type: 'submit' }, 'Guardar'))))) : null;
 
     add(
