@@ -334,8 +334,9 @@
       ? h('ol', { class: 'timeline' }, it.milestones.map((ms) => {
           const future = ms.date && ms.date > today;
           const when = ms.date ? (ms.dateEnd ? `${dayMonth(ms.date)} – ${fullDate(ms.dateEnd)}` : fullDate(ms.date)) : ms.label;
+          const sedeTag = slug === 'rediseno' ? ((state.data.rdSedes || []).find((x) => x.id === ms.rdSedeId)?.name || 'General') : null;
           return h('li', { class: 'tl-item' + (future ? ' is-future' : '') },
-            h('span', { class: 'tl-when' }, when, future ? h('span', { class: 'tag' }, 'Programado') : null),
+            h('span', { class: 'tl-when' }, when, future ? h('span', { class: 'tag' }, 'Programado') : null, sedeTag ? h('span', { class: 'tag tag-sede' }, sedeTag) : null),
             h('span', { class: 'tl-text' }, ms.text),
             (isAdmin() || (state.user.role === 'ingeniero' && ms.createdBy === state.user.id)) ? h('button', { class: 'link-btn tl-del no-present', type: 'button', 'aria-label': 'Eliminar hito',
               onclick: (e) => confirmInline(e.currentTarget, async () => { await api('DELETE', '/api/milestones/' + ms.id); await reload('Hito eliminado'); }) }, 'Eliminar') : null);
@@ -345,11 +346,12 @@
         e.preventDefault();
         const f = e.currentTarget;
         try {
-          await api('POST', '/api/milestones', { initiative: slug, date: f.elements.date.value, text: f.elements.text.value });
+          await api('POST', '/api/milestones', { initiative: slug, date: f.elements.date.value, text: f.elements.text.value, rdSedeId: f.elements.rdSede ? f.elements.rdSede.value || null : null });
           await reload('Hito agregado');
         } catch (err) { toast(err.message, 'error'); }
       } },
       h('label', { class: 'sr-only', for: 'ms-date' }, 'Fecha del hito'), h('input', { id: 'ms-date', name: 'date', type: 'date', required: true }),
+      slug === 'rediseno' ? [h('label', { class: 'sr-only', for: 'ms-sede' }, 'Sede del hito'), h('select', { id: 'ms-sede', name: 'rdSede' }, h('option', { value: '' }, 'General (todas las sedes)'), (state.data.rdSedes || []).map((x) => h('option', { value: x.id }, x.name)))] : null,
       h('label', { class: 'sr-only', for: 'ms-text' }, 'Descripción del hito'), h('input', { id: 'ms-text', name: 'text', type: 'text', placeholder: 'Descripción del hito', maxlength: 400, required: true }),
       h('button', { class: 'btn', type: 'submit' }, 'Agregar hito')) : null;
 
@@ -387,35 +389,33 @@
 
     add(
       h('nav', { class: 'crumb no-present' }, h('a', { href: '#/' }, '← Tablero')),
-      h('header', { class: 'detail-head' },
+      h('header', { class: 'detail-head ini-general' },
         h('div', {}, h('p', { class: 'eyebrow' }, it.subtitle), h('h1', {}, it.name), noKpi ? null : pill(main.status)),
         h('div', { class: 'form-actions head-actions no-present' },
           exportMenu(() => [
-            pdfItem(slug === 'recorridos' ? 'Iniciativa y recorridos del periodo' : slug === 'rediseno' ? 'Iniciativa y seguimiento diario' : 'Esta iniciativa'),
+            pdfItem(slug === 'recorridos' ? 'Iniciativa y recorridos del periodo' : slug === 'rediseno' ? (window.PortalRediseno?.pdfHint() || 'Iniciativa y seguimiento diario') : 'Esta iniciativa'),
             ...(slug === 'recorridos' && window.PortalRecorridos ? window.PortalRecorridos.exportItems() : []),
             ...(slug === 'rediseno' && window.PortalRediseno ? window.PortalRediseno.exportItems() : []),
             { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
           slug !== 'recorridos' && slug !== 'rediseno' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
-      noKpi ? null : h('p', { class: 'kpi-caption' }, k.label),
-      noKpi ? null : trio,
-      !noKpi && facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null,
-      noKpi ? null : othersBox,
+      noKpi ? null : h('div', { class: 'ini-general' }, h('p', { class: 'kpi-caption' }, k.label), trio,
+        facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null, othersBox),
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
-      noKpi ? null : h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
+      noKpi ? null : h('section', { class: 'panel ini-general' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
         h('p', { class: 'legend' },
           h('span', { class: 'lg lg-line' }, 'Valor semanal'),
           k.target !== null && k.target !== undefined ? h('span', { class: 'lg lg-target' }, 'Objetivo') : null,
           k.limit ? h('span', { class: 'lg lg-limit' }, k.limitLabel) : null)),
-      h('div', { class: 'two' },
+      h('div', { class: 'two ini-general' },
         h('section', { class: 'panel' },
           h('h2', {}, 'Valor generado al negocio'), h('p', { class: 'value-text' }, it.value),
           h('h2', {}, 'Impacto esperado'), h('ul', { class: 'impact' }, it.impact.map((i) => h('li', {}, i)))),
         h('section', { class: 'panel' }, h('h2', {}, 'Hitos'), msList, msForm)),
-      h('section', { class: 'panel' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
-      h('section', { class: 'sections' }, (it.sections || []).map(renderSection), goals),
+      h('section', { class: 'panel ini-general' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
+      h('section', { class: 'sections ini-general' }, (it.sections || []).map(renderSection), goals),
     );
     if (!noKpi) drawChart(main);
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);

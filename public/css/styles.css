@@ -527,3 +527,12 @@ td.lv, .chip.lv { color: var(--ink); }
 @media (max-width: 1000px) { .rec-tiles { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 680px) { .rec-tiles { grid-template-columns: 1fr; } }
 @media print { .rec-tiles { grid-template-columns: repeat(3, 1fr); } }
+
+/* v3.12: reporte de una sede de Rediseño WLAN */
+.tag-sede { margin-left: 6px; }
+@media print {
+  body.rd-sede-report .ini-general, body.rd-sede-report .rd-general, body.rd-sede-report .crumb { display: none !important; }
+}
+@media print {
+  .rd-root .panel, .rd-root .two, .rd-root .rec-tiles, .rd-root .tiles { break-inside: avoid; page-break-inside: avoid; }
+}

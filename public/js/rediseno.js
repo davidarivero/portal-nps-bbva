@@ -9,7 +9,11 @@
   const stamp = (iso) => { const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
   const view = { desde: null, hasta: null, sede: 'all', panel: null };
   let D = null; // datos del periodo
-  let root = null; let kpi = null;
+  let root = null; let kpi = null; let ini = null;
+  // Reporte de una sede: al imprimir con una sede elegida, se ocultan los bloques generales de la iniciativa.
+  const sedeReport = () => !!(root && root.isConnected && view.sede !== 'all');
+  window.addEventListener('beforeprint', () => document.body.classList.toggle('rd-sede-report', sedeReport()));
+  window.addEventListener('afterprint', () => document.body.classList.remove('rd-sede-report'));
 
   async function apiX(method, url, body) {
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'portal' }, body: body ? JSON.stringify(body) : undefined }).catch(() => { throw new Error('No hay conexión con el servidor.'); });
@@ -416,7 +420,7 @@
     const seg = (k) => (tally[k] ? h('div', { class: 'mix-seg lv-' + k, style: `flex:${tally[k]}` }) : null);
     push(h('section', { class: 'rd-tiles' },
       h('div', { class: 'tile' + lvClass(S.uAvg) }, h('span', { class: 'tile-label' }, 'Promedio de usuarios por AP'), h('span', { class: 'tile-num' }, nf(S.uAvg)),
-        h('span', { class: 'tile-sub' }, `${LV[level(S.uAvg)]}${base !== null ? ` · métrica inicial ${nf(base)}` : ''}`)),
+        h('span', { class: 'tile-sub' }, `${LV[level(S.uAvg)]}${base !== null && !scope ? ` · métrica inicial ${nf(base)}` : ''}`)),
       h('div', { class: 'tile' + lvClass(S.uMax) }, h('span', { class: 'tile-label' }, 'Pico de usuarios en un AP'), h('span', { class: 'tile-num' }, nf(S.uMax, 0)),
         h('span', { class: 'tile-sub' }, `${LV[level(S.uMax)]} · criterio de rediseño: más de ${D.umbrales.alarm}`)),
       h('div', { class: 'tile' }, h('span', { class: 'tile-label' }, `AP que superaron ${D.umbrales.alarm}`), h('span', { class: 'tile-num' }, sub), h('span', { class: 'tile-sub' }, `de ${S.aps.length} AP monitoreados`)),
@@ -431,7 +435,7 @@
       h('section', { class: 'panel' }, h('h2', {}, `Utilización de canal · ${S.name}`), c2, h('p', { class: 'legend' }, h('span', { class: 'lg lg-line' }, 'Promedio diario'), h('span', { class: 'lg lg-peak' }, 'Pico diario'), h('span', { class: 'muted' }, 'Informativa: no forma parte de la métrica')))));
 
     // estadística por sede
-    push(h('section', { class: 'tests' }, h('h2', {}, 'Estadística por sede'),
+    push(h('section', { class: 'tests rd-general' }, h('h2', {}, 'Estadística por sede'),
       h('div', { class: 'rd-sedes' }, C.sedes.map((s) => {
         const t = s.trend;
         return h('article', { class: 'rd-sede' + (scope && scope.id === s.id ? ' is-selected' : '') },
@@ -460,8 +464,16 @@
     };
     push((scope ? [scope] : C.sedes.filter((s) => s.n)).map(detail));
 
+    // hitos de la sede (solo con una sede elegida; también salen en su reporte)
+    if (scope) {
+      const ms = ((ini && ini.milestones) || []).filter((m) => m.rdSedeId === scope.id);
+      push(h('section', { class: 'panel rd-hitos' }, h('h2', {}, `Hitos · ${scope.name}`),
+        ms.length ? h('ol', { class: 'timeline' }, ms.map((m) => h('li', { class: 'tl-item' }, h('span', { class: 'tl-when' }, m.date ? fullDate(m.date) : m.label || ''), h('span', { class: 'tl-text' }, m.text))))
+          : h('p', { class: 'muted' }, 'Sin hitos registrados para esta sede. Se agregan en la sección "Hitos" de la iniciativa, eligiendo la sede.')));
+    }
+
     // cargas
-    push(h('section', { class: 'panel' }, h('h2', {}, 'Cargas de información'),
+    push(h('section', { class: 'panel rd-general' }, h('h2', {}, 'Cargas de información'),
       h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Fecha y hora'), h('th', {}, 'Ingeniero'), h('th', {}, 'Origen'), h('th', { class: 'num-col' }, 'Nuevas'), h('th', { class: 'num-col' }, 'Actualizadas'), h('th', { class: 'num-col' }, 'Avisos'), h('th', { class: 'no-print' }, ''))),
         h('tbody', {}, D.cargas.map((c) => { const r = c.resumen || {}; return h('tr', {}, h('td', { class: 'nowrap' }, stamp(c.ts)), h('td', {}, c.user),
@@ -509,9 +521,10 @@
 
   window.PortalRediseno = {
     exportItems: () => (lastC ? lastC.sedes.filter((s) => s.n).map((s) => ({ label: `Imagen PNG · ${s.name}`, hint: 'Últimos 2 días hábiles, para WhatsApp', onClick: () => sedeImage(lastC, s).then(() => toast(`Imagen de ${s.name} descargada`)).catch((e) => toast(e.message, 'error')) })) : []),
+    pdfHint: () => { const s = D && view.sede !== 'all' ? D.sedes.find((x) => String(x.id) === String(view.sede)) : null; return s ? `Reporte solo de ${s.name}` : 'Iniciativa y seguimiento diario de todas las sedes'; },
     async mount(el, it) {
       view.autoFindings = true;
-      root = el; kpi = it.kpis[0];
+      root = el; kpi = it.kpis[0]; ini = it;
       el.textContent = ''; el.append(h('p', { class: 'loading' }, 'Cargando el seguimiento diario…'));
       try { await reload(); } catch (err) { el.textContent = ''; el.append(h('p', { class: 'empty' }, err.message)); }
     },

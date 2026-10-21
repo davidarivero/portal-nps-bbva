@@ -34,6 +34,23 @@ module.exports = function init(ctx) {
   `);
 
   const canWrite = (u) => u.role === 'admin' || u.role === 'ingeniero';
+  // Hitos por sede (v3.12): columna nueva en milestones. Los hitos existentes se asignan una sola vez
+  // a la sede que mencionan en el texto; los que no mencionan ninguna quedan como generales.
+  if (!db.prepare('PRAGMA table_info(milestones)').all().some((c) => c.name === 'rd_sede_id')) {
+    db.exec('ALTER TABLE milestones ADD COLUMN rd_sede_id INTEGER REFERENCES rd_sedes(id)');
+    const norm = (t) => String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const ALIAS = { monterrey: ['mty'], guadalajara: ['gdl'], tijuana: ['tij'] };
+    const sedes = db.prepare('SELECT id, name FROM rd_sedes').all().map((s) => {
+      const words = norm(s.name).split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
+      return { ...s, keys: [...words, ...words.flatMap((w) => ALIAS[w] || [])] };
+    });
+    const ini0 = db.prepare("SELECT id FROM initiatives WHERE slug = 'rediseno'").get();
+    if (ini0) for (const m of db.prepare('SELECT id, text FROM milestones WHERE initiative_id = ?').all(ini0.id)) {
+      const t = ' ' + norm(m.text).replace(/[^a-z0-9]+/g, ' ') + ' ';
+      const hits = sedes.filter((s) => s.keys.some((k) => t.includes(' ' + k + ' ')));
+      if (hits.length === 1) { db.prepare('UPDATE milestones SET rd_sede_id = ? WHERE id = ?').run(hits[0].id, m.id); audit(null, 'hito_sede_asignada', { hito: m.id, sede: hits[0].name }); }
+    }
+  }
   // La iniciativa guarda su criterio en la base: se alinea con el umbral vigente (cambio de 30 a 37 usuarios por AP).
   const ini = db.prepare("SELECT id, def FROM initiatives WHERE slug = 'rediseno'").get();
   if (ini) {

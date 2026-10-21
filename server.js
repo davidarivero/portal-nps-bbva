@@ -268,7 +268,7 @@ const publicUser = (u) => ({ id: u.id, username: u.username, name: u.name, role:
 function loadData() {
   const initiatives = db.prepare('SELECT id, slug, def FROM initiatives ORDER BY sort').all().map((r) => ({
     slug: r.slug, ...JSON.parse(r.def),
-    milestones: db.prepare(`SELECT id, date, date_end AS dateEnd, label, text, created_by AS createdBy FROM milestones
+    milestones: db.prepare(`SELECT id, date, date_end AS dateEnd, label, text, created_by AS createdBy, rd_sede_id AS rdSedeId FROM milestones
       WHERE initiative_id = ? ORDER BY (date IS NULL), date, sort, id`).all(r.id),
   }));
   const records = db.prepare(`SELECT r.id, i.slug AS initiative, r.week_start AS week, r.vals, r.detail, r.sede,
@@ -308,8 +308,9 @@ function loadData() {
     }
   }
   merged.sort((a, b) => a.week.localeCompare(b.week));
+  const rdSedes = db.prepare('SELECT s.id, s.name FROM rd_sedes s WHERE EXISTS (SELECT 1 FROM rd_aps a WHERE a.sede_id = s.id) ORDER BY s.sort, s.id').all();
   const recorridosTotal = recorridos ? db.prepare("SELECT COUNT(*) AS n FROM recorridos WHERE status = 'completo'").get().n : null;
-  return { program: seed.program, initiatives, records: merged, recorridosTotal };
+  return { program: seed.program, initiatives, records: merged, recorridosTotal, rdSedes };
 }
 const getInitiative = (slug) => {
   const row = db.prepare('SELECT id, slug, def FROM initiatives WHERE slug = ?').get(String(slug));
@@ -465,8 +466,14 @@ async function api(req, res, url) {
     const it = getInitiative(body.initiative);
     if (!isDate(body.date)) throw new HttpError(400, 'Selecciona la fecha del hito.');
     const text = str(body.text, 400, 'Descripción del hito', { required: true, min: 5 });
-    db.prepare('INSERT INTO milestones (initiative_id, date, text, sort, created_by) VALUES (?,?,?,?,?)').run(it.id, body.date, text, 0, user.id);
-    audit(user.id, 'hito_creado', { initiative: it.slug, date: body.date, text });
+    // Rediseño WLAN: el hito puede ser de una sede (sale en el reporte de esa sede) o general.
+    let rdSede = null;
+    if (it.slug === 'rediseno' && body.rdSedeId) {
+      rdSede = db.prepare('SELECT id, name FROM rd_sedes WHERE id = ?').get(Number(body.rdSedeId));
+      if (!rdSede) throw new HttpError(400, 'La sede seleccionada no existe.');
+    }
+    db.prepare('INSERT INTO milestones (initiative_id, date, text, sort, created_by, rd_sede_id) VALUES (?,?,?,?,?,?)').run(it.id, body.date, text, 0, user.id, rdSede ? rdSede.id : null);
+    audit(user.id, 'hito_creado', { initiative: it.slug, date: body.date, text, sede: rdSede ? rdSede.name : null });
     return send(res, 200, { ok: true });
   }
   if ((mm = p.match(/^\/api\/milestones\/(\d+)$/)) && m === 'DELETE') {
