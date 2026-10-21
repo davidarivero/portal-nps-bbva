@@ -9,7 +9,7 @@ const { parseWorkbook, apName, apPiso, plain } = require('./rediseno-formato');
 
 // Usuarios por AP: más de 37 es alarmante (criterio de rediseño); de 30 a 37 es regular.
 const UMBRALES = { regular: 30, alarm: 37 };
-const MAX_SLOTS = 8;
+const MAX_SLOTS = 16; // hasta 16 lecturas por AP al día (hoy: cada hora de 7 a 11 y cada 2 horas después)
 const keyOf = (s) => plain(s).replace(/[^a-z0-9]/g, '');
 function lev(a, b) {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);

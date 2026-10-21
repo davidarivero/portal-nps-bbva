@@ -13,7 +13,7 @@ const isUsers = (v) => typeof v === 'string' && /^usuarios?$/.test(plain(v));
 const isUtil = (v) => typeof v === 'string' && /^utilizacion/.test(plain(v));
 const isLabel = (v) => isAp(v) || isUsers(v) || isUtil(v);
 const isDate = (v) => typeof v === 'number' && v >= 40000 && v < 70000;
-const MAX_READINGS = 8;
+const MAX_READINGS = 16;
 
 function toTime(v) {
   if (typeof v === 'number' && v >= 0 && v < 1) { const m = Math.round(v * 1440); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }

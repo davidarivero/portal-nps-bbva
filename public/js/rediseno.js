@@ -173,6 +173,7 @@
     const COL = ['#d3d3cf', '#a9aaae', '#6d6e71', HEX.red].slice(-caps.length);
     while (COL.length < caps.length) COL.unshift('#e6e6e3');
     const capLbl = (c) => `${wd(c.fecha)} ${dayMonth(c.fecha)}${c.hora ? ' · ' + c.hora : ''}`;
+    if (caps.length > 4) return sedeDots({ K, s, W, P, U, aps, caps, last, wd, short, T, val, nums });
     const Y1 = 200, CH1 = 300, Y2 = Y1 + CH1 + 150, CH2 = 220, H = Y2 + CH2 + 150;
     let g = `<rect width="${W}" height="${H}" fill="#ffffff"/><rect width="${W}" height="10" fill="${HEX.red}"/>`;
     g += `<image href="${await logo()}" x="${P}" y="34" width="150" height="112"/>`;
@@ -207,6 +208,9 @@
     const fy = H - 30;
     g += T(P, fy, 'AP identificado por piso y número (P32-05 = AP-P32-…-05). Sin sábados ni domingos.', 15, HEX.ink3);
     g += T(W - P, fy, `Generado el ${stamp(new Date().toISOString())} por ${state.user.name} · Sipnology`, 15, HEX.ink3, 400, 'end');
+    return savePng(g, W, H, s, last);
+  }
+  async function savePng(g, W, H, s, last) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
     const img = new Image();
     await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('No se pudo generar la imagen.')); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); });
@@ -214,6 +218,60 @@
     const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `rediseno-wlan-${s.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}-${last.fecha}${last.hora ? '-' + last.hora.replace(':', '') : ''}.png`;
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  /* Muchas capturas por día (cada hora o cada 2 horas): las barras ya no caben. Gráfica de puntos:
+     por cada AP, un punto por captura en orden de hora (como una mini línea de tiempo), un tono por día,
+     la última captura en rojo con su valor. */
+  async function sedeDots({ K, s, W, P, U, aps, caps, last, wd, short, T, val, nums }) {
+    const days = K.dias.filter((d) => caps.some((c) => c.fecha === d));
+    const DAYC = days.length > 1 ? ['#b9bab6', '#505155'] : ['#505155'];
+    const dayIdx = (c) => days.indexOf(c.fecha);
+    const Y1 = 236, CH1 = 330, Y2 = Y1 + CH1 + 170, CH2 = 260, H = Y2 + CH2 + 164;
+    let g = `<rect width="${W}" height="${H}" fill="#ffffff"/><rect width="${W}" height="10" fill="${HEX.red}"/>`;
+    g += `<image href="${await logo()}" x="${P}" y="34" width="150" height="112"/>`;
+    g += T(P + 190, 70, `${state.data.program.client} · Mejora NPS · WLAN`.toUpperCase(), 17, HEX.ink3, 600);
+    g += T(P + 190, 114, `Rediseño WLAN · ${s.name}`, 42, HEX.ink, 700);
+    g += T(P + 190, 150, `${days.map((d) => `${wd(d)} ${fullDate(d)}`).join(' y ')} · ${caps.length} capturas · ${aps.length} AP`, 22, HEX.ink2, 600);
+    // leyenda común
+    const hrs = (d) => { const hs = caps.filter((c) => c.fecha === d).map((c) => c.hora).filter(Boolean); return hs.length ? `${hs[0]} a ${hs[hs.length - 1]}` : ''; };
+    let lx = P; const ly = 196;
+    days.forEach((d, i) => { const t = `${wd(d)} ${dayMonth(d)} (${caps.filter((c) => c.fecha === d).length} capturas, ${hrs(d)})`; g += `<circle cx="${lx + 8}" cy="${ly - 6}" r="7" fill="${DAYC[i]}"/>` + T(lx + 24, ly, t, 16, HEX.ink2, 500); lx += 24 + t.length * 8.6 + 30; });
+    { const t = `Última captura: ${wd(last.fecha)} ${dayMonth(last.fecha)}${last.hora ? ' · ' + last.hora : ''}`; g += `<circle cx="${lx + 9}" cy="${ly - 6}" r="9" fill="${HEX.red}" stroke="#fff" stroke-width="2"/>` + T(lx + 26, ly, t, 16, HEX.ink, 700); }
+    const chart = (Y, hgt, title, sub, idx, top, step, suf, refs) => {
+      const x0 = P + 54, x1 = W - P, y0 = Y + 80, y1 = Y + 80 + hgt;
+      const Yf = (v) => y0 + (1 - Math.min(v, top) / top) * (y1 - y0);
+      let o = T(P, Y + 24, title, 26, HEX.ink, 700) + T(P, Y + 48, sub, 15, HEX.ink3);
+      const gw = (x1 - x0) / aps.length, pad = Math.min(14, gw * 0.14), gapDay = days.length > 1 ? Math.min(10, gw * 0.1) : 0;
+      const step2 = (gw - 2 * pad - gapDay) / Math.max(1, caps.length - 1);
+      const X = (i, k) => x0 + i * gw + pad + k * step2 + (dayIdx(caps[k]) > 0 ? gapDay : 0);
+      aps.forEach((a, i) => { if (i % 2) o += `<rect x="${x0 + i * gw}" y="${y0 - 6}" width="${gw}" height="${y1 - y0 + 6}" fill="#f7f7f5"/>`; });
+      for (let v = 0; v <= top; v += step) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${v ? '#e9e9e6' : '#c9c9c5'}"/>` + T(x0 - 10, Yf(v) + 5, v + suf, 15, HEX.ink3, 400, 'end');
+      for (const [v, col, dash, lbl] of refs) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${col}" stroke-width="2" stroke-dasharray="${dash}"/>` + T(x1, Yf(v) - 7, lbl, 14, col, 700, 'end');
+      const r = Math.max(2.5, Math.min(5, step2 * 0.42));
+      aps.forEach((a, i) => {
+        // una línea delgada por día une los puntos en orden de hora
+        days.forEach((d, di) => {
+          let dp = '', pen = false;
+          caps.forEach((c, k) => { if (c.fecha !== d) return; const v = val(c, a, idx); if (v === null) { pen = false; return; } dp += `${pen ? 'L' : 'M'}${X(i, k).toFixed(1)},${Yf(v).toFixed(1)} `; pen = true; });
+          if (dp) o += `<path d="${dp}" fill="none" stroke="${DAYC[di]}" stroke-width="1.5" stroke-opacity="0.7"/>`;
+        });
+        caps.forEach((c, k) => { const v = val(c, a, idx); if (v === null || c === last) return; o += `<circle cx="${X(i, k)}" cy="${Yf(v)}" r="${r}" fill="${DAYC[dayIdx(c)]}"/>`; });
+        // pico de los 2 días si cruza el corte "regular"
+        const vs = caps.map((c) => val(c, a, idx));
+        const lv0 = val(last, a, idx);
+        if (!idx) { const mx = Math.max(...nums(vs)); const km = vs.indexOf(mx); if (mx >= U.regular && caps[km] !== last && mx > (lv0 ?? -1)) o += T(X(i, km), Yf(mx) - 9, mx, 13, mx > U.alarm ? HEX.critLine : HEX.warnLine, 700, 'middle'); }
+        if (lv0 !== null) { const xl = X(i, caps.length - 1); o += `<circle cx="${xl}" cy="${Yf(lv0)}" r="${r + 3.5}" fill="${HEX.red}" stroke="#fff" stroke-width="2"/>` + T(Math.min(xl, x1 - 12), Yf(lv0) - 13, nf(lv0, 0) + suf, 15, HEX.ink, 700, 'middle'); }
+        o += T(x0 + i * gw + gw / 2, y1 + 26, short(a.name), 14, HEX.ink2, 600, 'middle');
+      });
+      return o;
+    };
+    const uTop = Math.ceil(Math.max(U.alarm * 1.12, ...nums(aps.flatMap((a) => caps.map((c) => val(c, a, 0))))) / 10) * 10;
+    g += chart(Y1, CH1, 'Usuarios por AP', 'Cada punto es una captura, en orden de hora de izquierda a derecha.', 0, uTop, 10, '', [[U.alarm, HEX.critLine, '6 5', `Criterio de rediseño (${U.alarm})`], [U.regular, HEX.warnLine, '2 5', `Regular (${U.regular})`]]);
+    g += chart(Y2, CH2, 'Ocupación de canal por AP (%) · informativa', 'Mismo orden de capturas que la gráfica de usuarios.', 1, 100, 25, '%', []);
+    const fy = H - 30;
+    g += T(P, fy, 'AP identificado por piso y número (P32-05 = AP-P32-…-05). Sin sábados ni domingos.', 15, HEX.ink3);
+    g += T(W - P, fy, `Generado el ${stamp(new Date().toISOString())} por ${state.user.name} · Sipnology`, 15, HEX.ink3, 400, 'end');
+    return savePng(g, W, H, s, last);
   }
 
   /* ---------- carga de Excel ---------- */

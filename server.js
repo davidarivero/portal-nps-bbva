@@ -308,7 +308,8 @@ function loadData() {
     }
   }
   merged.sort((a, b) => a.week.localeCompare(b.week));
-  return { program: seed.program, initiatives, records: merged };
+  const recorridosTotal = recorridos ? db.prepare("SELECT COUNT(*) AS n FROM recorridos WHERE status = 'completo'").get().n : null;
+  return { program: seed.program, initiatives, records: merged, recorridosTotal };
 }
 const getInitiative = (slug) => {
   const row = db.prepare('SELECT id, slug, def FROM initiatives WHERE slug = ?').get(String(slug));
