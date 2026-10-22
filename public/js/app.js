@@ -396,14 +396,17 @@
             pdfItem(slug === 'recorridos' ? 'Iniciativa y recorridos del periodo' : slug === 'rediseno' ? (window.PortalRediseno?.pdfHint() || 'Iniciativa y seguimiento diario') : 'Esta iniciativa'),
             ...(slug === 'recorridos' && window.PortalRecorridos ? window.PortalRecorridos.exportItems() : []),
             ...(slug === 'rediseno' && window.PortalRediseno ? window.PortalRediseno.exportItems() : []),
+            ...(slug === 'encuestas' && window.PortalEncuestas ? window.PortalEncuestas.exportItems() : []),
             { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
-          slug !== 'recorridos' && slug !== 'rediseno' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
+          slug === 'encuestas' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/encuesta/nueva' }, 'Nueva encuesta') : null,
+          !['recorridos', 'rediseno', 'encuestas'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
       noKpi ? null : h('div', { class: 'ini-general' }, h('p', { class: 'kpi-caption' }, k.label), trio,
         facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null, othersBox),
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
+      slug === 'encuestas' ? h('div', { id: 'enc-root', class: 'rd-root' }) : null,
       noKpi ? null : h('section', { class: 'panel ini-general' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
         h('p', { class: 'legend' },
           h('span', { class: 'lg lg-line' }, 'Valor semanal'),
@@ -420,6 +423,7 @@
     if (!noKpi) drawChart(main);
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
     if (slug === 'recorridos' && window.PortalRecorridos) window.PortalRecorridos.mount(document.getElementById('rec-root'));
+    if (slug === 'encuestas' && window.PortalEncuestas) window.PortalEncuestas.mount(document.getElementById('enc-root'));
   }
 
   /** Confirmación en la misma página (sin diálogos del navegador). */
@@ -444,7 +448,8 @@
     if (!canWrite()) return add(h('p', { class: 'empty' }, 'Tu usuario es de consulta: no puede capturar avances.'));
     if (slugArg === 'recorridos') { window.location.hash = '#/recorrido/nuevo'; return; }
     if (slugArg === 'rediseno') { window.location.hash = '#/iniciativa/rediseno'; return; }
-    const inits = state.data.initiatives.filter((i) => i.slug !== 'recorridos' && i.slug !== 'rediseno');
+    if (slugArg === 'encuestas') { window.location.hash = '#/encuesta/nueva'; return; }
+    const inits = state.data.initiatives.filter((i) => !['recorridos', 'rediseno', 'encuestas'].includes(i.slug));
     let it = inits.find((i) => i.slug === slugArg) || inits[0];
     const today = todayStr();
 
@@ -658,7 +663,7 @@
     let key = parts[0] || 'tablero';
     if (state.user.mustChange) key = 'cuenta';
     view.textContent = '';
-    renderChrome(key === 'iniciativa' || key === 'recorrido' ? 'tablero' : key);
+    renderChrome(key === 'iniciativa' || key === 'recorrido' || key === 'encuesta' ? 'tablero' : key);
     try {
       if (key === 'tablero') viewDashboard();
       else if (key === 'iniciativa') viewDetail(parts[1]);

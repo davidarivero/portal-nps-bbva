@@ -12,6 +12,7 @@ const { DatabaseSync } = require('node:sqlite');
 const seed = require('./seed');
 const initRecorridos = require('./recorridos');
 const initRediseno = require('./rediseno');
+const initEncuestas = require('./encuestas');
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -307,6 +308,19 @@ function loadData() {
       });
     }
   }
+  // Encuestas a usuarios finales: el total semanal sale de las encuestas registradas en el portal.
+  if (encuestas && initiatives.some((i) => i.slug === 'encuestas')) {
+    const weeks = encuestas.weeklySummary();
+    const covered = new Set(weeks.map((w) => w.week));
+    merged = merged.filter((r) => !(r.initiative === 'encuestas' && covered.has(r.week)));
+    for (const w of weeks) {
+      merged.push({
+        id: null, auto: true, initiative: 'encuestas', week: w.week, values: { encuestas: w.encuestas, satisfechos: w.satisfechos },
+        detail: `${w.encuestas} encuestas completas (${Object.entries(w.porSede).map(([k, n]) => `${k} ${n}`).join(', ')}). ${w.satisfechos} dicen que el WiFi cumple sus expectativas (${Math.round((w.satisfechos / w.encuestas) * 100)}%).`,
+        sede: Object.keys(w.porSede).join(', '), evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Encuestas registradas',
+      });
+    }
+  }
   merged.sort((a, b) => a.week.localeCompare(b.week));
   const rdSedes = db.prepare('SELECT s.id, s.name FROM rd_sedes s WHERE EXISTS (SELECT 1 FROM rd_aps a WHERE a.sede_id = s.id) ORDER BY s.sort, s.id').all();
   const recorridosTotal = recorridos ? db.prepare("SELECT COUNT(*) AS n FROM recorridos WHERE status = 'completo'").get().n : null;
@@ -406,6 +420,7 @@ async function api(req, res, url) {
     const it = getInitiative(body.initiative);
     if (it.slug === 'recorridos') throw new HttpError(400, 'Los recorridos proactivos ahora se capturan por día en la sección Recorridos.');
     if (it.slug === 'rediseno') throw new HttpError(400, 'El rediseño WLAN ahora se captura por día dentro de su tablero.');
+    if (it.slug === 'encuestas') throw new HttpError(400, 'Las encuestas se registran una por una desde la iniciativa (botón "Nueva encuesta").');
     if (!isDate(body.week)) throw new HttpError(400, 'Selecciona una fecha válida para la semana.');
     const week = mondayOf(body.week);
     if (week > mondayOf(new Date().toISOString().slice(0, 10))) throw new HttpError(400, 'No se pueden capturar semanas futuras.');
@@ -572,11 +587,13 @@ async function api(req, res, url) {
   }
   if (await recorridos.handle(req, res, url, user)) return;
   if (await rediseno.handle(req, res, url, user)) return;
+  if (await encuestas.handle(req, res, url, user)) return;
   throw new HttpError(404, 'Ruta no encontrada.');
 }
 
 const recorridos = initRecorridos({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const rediseno = initRediseno({ db, HttpError, send, readJson, audit, now, DATA_DIR });
+const encuestas = initEncuestas({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 
 /* ---------- servidor ---------- */
 const server = http.createServer(async (req, res) => {
@@ -607,6 +624,7 @@ const server = http.createServer(async (req, res) => {
 
 (async () => {
   seedDatabase();
+  encuestas.ensure();
   await ensureAdmin();
   server.listen(PORT, HOST, () => console.log(`Portal NPS · WLAN disponible en http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
 })();
