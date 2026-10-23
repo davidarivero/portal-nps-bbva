@@ -660,6 +660,7 @@
   }
   async function route() {
     const parts = window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+    if (state.stale) { state.stale = false; try { state.data = await api('GET', '/api/data'); } catch { /* se queda con los datos anteriores */ } }
     let key = parts[0] || 'tablero';
     if (state.user.mustChange) key = 'cuenta';
     view.textContent = '';

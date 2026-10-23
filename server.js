@@ -313,10 +313,12 @@ function loadData() {
     const weeks = encuestas.weeklySummary();
     const covered = new Set(weeks.map((w) => w.week));
     merged = merged.filter((r) => !(r.initiative === 'encuestas' && covered.has(r.week)));
-    for (const w of weeks) {
+    let acumulado = 0;
+    for (const w of weeks.sort((a, b) => a.week.localeCompare(b.week))) {
+      acumulado += w.encuestas;
       merged.push({
-        id: null, auto: true, initiative: 'encuestas', week: w.week, values: { encuestas: w.encuestas, satisfechos: w.satisfechos },
-        detail: `${w.encuestas} encuestas completas (${Object.entries(w.porSede).map(([k, n]) => `${k} ${n}`).join(', ')}). ${w.satisfechos} dicen que el WiFi cumple sus expectativas (${Math.round((w.satisfechos / w.encuestas) * 100)}%).`,
+        id: null, auto: true, initiative: 'encuestas', week: w.week, values: { acumulado, encuestas: w.encuestas, satisfechos: w.satisfechos },
+        detail: `Acumulado: ${acumulado} de 2,000. En la semana: ${w.encuestas} encuestas completas (${Object.entries(w.porSede).map(([k, n]) => `${k} ${n}`).join(', ')}). ${w.satisfechos} dicen que el WiFi cumple sus expectativas (${Math.round((w.satisfechos / w.encuestas) * 100)}%).`,
         sede: Object.keys(w.porSede).join(', '), evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Encuestas registradas',
       });
     }

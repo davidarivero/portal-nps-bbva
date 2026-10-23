@@ -31,24 +31,24 @@
     h('span', { class: 'enc-hlabel' }, r.label), h('div', { class: 'enc-htrack' }, h('span', { style: `width:${total ? Math.max(1, (r.n / total) * 100) : 0}%;background:${color}` })),
     h('span', { class: 'enc-hnum' }, `${nf(r.n)}`, h('small', {}, total ? ` ${pct(r.n, total)}%` : '')))));
 
-  function dailyChart(days, S, list) {
+  function dailyChart(days, S, list, meta = E.META.porDia) {
     const NS = 'http://www.w3.org/2000/svg';
     const el = (t, a, txt) => { const n = document.createElementNS(NS, t); for (const [k, v] of Object.entries(a)) n.setAttribute(k, v); if (txt !== undefined) n.textContent = txt; return n; };
     const W = 1100, H = 260, m = { t: 18, r: 12, b: 40, l: 36 };
     const per = days.map((d) => S.map((s) => list.filter((e) => e.fecha === d && e.sedeId === s.id).length));
-    const top = Math.max(E.META.porDia * 1.2, ...per.map((x) => x.reduce((a, b) => a + b, 0))) ;
+    const top = Math.max(meta * 1.2, ...per.map((x) => x.reduce((a, b) => a + b, 0))) ;
     const y = (v) => m.t + (1 - v / top) * (H - m.t - m.b);
     const band = (W - m.l - m.r) / Math.max(1, days.length), bw = Math.min(42, band * 0.7);
     const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'enc-svg', role: 'img', 'aria-label': 'Encuestas por día y sede contra la meta de 100' });
-    for (let v = 0; v <= top; v += 25) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: v ? 'ch-grid' : 'ch-axis' })); svg.append(el('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'ch-tick' }, v)); }
+    for (let v = 0; v <= top; v += top > 80 ? 25 : 10) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: v ? 'ch-grid' : 'ch-axis' })); svg.append(el('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'ch-tick' }, v)); }
     days.forEach((d, i) => {
       const x = m.l + band * i + (band - bw) / 2; let acc = 0;
       S.forEach((s, k) => { const n = per[i][k]; if (!n) return; svg.append(el('rect', { x, y: y(acc + n), width: bw, height: y(acc) - y(acc + n), fill: k ? COL.sede1 : COL.sede0 })); acc += n; });
       if (acc) svg.append(el('text', { x: x + bw / 2, y: y(acc) - 5, 'text-anchor': 'middle', class: 'ch-value' }, acc));
       if (days.length <= 25 || i % 2 === 0) svg.append(el('text', { x: x + bw / 2, y: H - m.b + 16, 'text-anchor': 'middle', class: 'ch-xsub' }, dayMonth(d)));
     });
-    svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(E.META.porDia), y2: y(E.META.porDia), class: 'ch-ref ch-ref-target' }));
-    svg.append(el('text', { x: W - m.r, y: y(E.META.porDia) - 6, 'text-anchor': 'end', class: 'ch-ref-label' }, `Meta diaria: ${E.META.porDia} (${E.META.porSede} por sede)`));
+    svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(meta), y2: y(meta), class: 'ch-ref ch-ref-target' }));
+    svg.append(el('text', { x: W - m.r, y: y(meta) - 6, 'text-anchor': 'end', class: 'ch-ref-label' }, S.length > 1 ? `Meta diaria: ${meta} (${E.META.porSede} por sede)` : `Meta diaria de la sede: ${meta}`));
     return svg;
   }
 
@@ -87,6 +87,10 @@
           h('button', { class: 'tab', type: 'button', onclick: () => { view.hasta = CAT.hoy; view.desde = E.addDays(CAT.hoy, -((new Date(CAT.hoy + 'T00:00:00Z').getUTCDay() + 6) % 7)); reload(); } }, 'Esta semana'),
           c.inicio ? h('button', { class: 'tab', type: 'button', onclick: () => { view.desde = c.inicio; view.hasta = CAT.hoy < c.fin ? CAT.hoy : c.fin; reload(); } }, 'Todo el levantamiento') : null)))));
 
+    if (view.sede) push(h('div', { class: 'rd-scope no-print', role: 'status' },
+      h('button', { class: 'btn', type: 'button', onclick: () => { view.sede = ''; render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, '← Volver a ambas sedes'),
+      h('span', {}, 'Estás viendo solo ', h('strong', {}, scopeName), '. El avance, las gráficas y los reportes corresponden a esta sede.')));
+
     // ---------- nivel 1: avance contra la meta ----------
     const bar = (n, meta, color) => h('div', { class: 'enc-bar' }, h('span', { style: `width:${Math.min(100, meta ? (n / meta) * 100 : 0)}%;background:${color}` }));
     push(h('section', { class: 'panel enc-level' }, h('p', { class: 'enc-eyebrow' }, `Avance contra la meta · ${scopeName}`),
@@ -106,7 +110,7 @@
     if (!view.sede) push(h('section', { class: 'panel enc-level' }, h('p', { class: 'enc-eyebrow' }, 'Por sede'),
       h('div', { class: 'enc-sedes' }, S.map((s, k) => {
         const l = done.filter((e) => e.sedeId === s.id), hoyS = hoyList.filter((e) => e.sedeId === s.id).length, esp = diasPeriodo.length * E.META.porSede, sis = l.filter((e) => e.cumple).length;
-        return h('article', { class: 'enc-sede' }, h('header', {}, h('h3', {}, short(s.name)), h('button', { class: 'link-btn no-print', type: 'button', onclick: () => { view.sede = String(s.id); render(); } }, 'Ver solo esta sede')),
+        return h('article', { class: 'enc-sede' }, h('header', {}, h('h3', {}, short(s.name)), h('button', { class: 'link-btn no-print', type: 'button', onclick: () => { view.sede = String(s.id); render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 'Ver solo esta sede')),
           h('div', { class: 'enc-row' }, h('span', {}, 'Periodo'), h('strong', {}, `${nf(l.length)} / ${nf(esp)}`), bar(l.length, esp, k ? COL.sede1 : COL.sede0)),
           h('div', { class: 'enc-row' }, h('span', {}, 'Hoy'), h('strong', {}, `${hoyS} / ${E.META.porSede}`), bar(hoyS, E.META.porSede, k ? COL.sede1 : COL.sede0)),
           h('div', { class: 'enc-row' }, h('span', {}, 'Satisfechos'), h('strong', {}, l.length ? `${pct(sis, l.length)}%` : '—'), h('div', { class: 'enc-bar enc-split' }, h('span', { style: `width:${l.length ? (sis / l.length) * 100 : 0}%;background:${COL.si}` }), h('span', { style: `width:${l.length ? ((l.length - sis) / l.length) * 100 : 0}%;background:${COL.no}` }))));
@@ -115,7 +119,7 @@
     if (!done.length) { push(h('section', { class: 'panel' }, h('p', { class: 'empty' }, 'Aún no hay encuestas en este periodo.'))); root.append(...kids); return; }
 
     // avance diario
-    push(h('section', { class: 'panel' }, h('h2', {}, 'Encuestas por día'), h('div', { class: 'chart' }, dailyChart(diasPeriodo, scope, done)),
+    push(h('section', { class: 'panel' }, h('h2', {}, 'Encuestas por día'), h('div', { class: 'chart' }, dailyChart(diasPeriodo, scope, done, metaDia)),
       h('p', { class: 'legend' }, scope.map((s, k) => h('span', {}, h('i', { class: 'enc-dot', style: `background:${k ? COL.sede1 : COL.sede0}` }), short(s.name))), h('span', { class: 'lg lg-target' }, 'Meta diaria'))));
 
     // ---------- resultados ----------
@@ -157,7 +161,7 @@
           h('td', {}, e.resultado === 'completa' ? h('span', { class: 'pill ' + (e.cumple ? 'pill-good' : 'pill-crit') }, e.cumple ? 'Sí cumple' : 'No cumple') : h('span', { class: 'pill pill-none' }, lab(E.RESULTADOS, e.resultado))),
           h('td', {}, e.resultado === 'completa' && !e.cumple ? `${e.inconveniente === 'otro' ? e.inconvenienteOtro : lab(E.INCONVENIENTES, e.inconveniente)} · ${lab(E.FRECUENCIAS, e.frecuencia)} · ${e.actividad === 'otro' ? (e.actividadOtro || 'Otro') : lab(E.ACTIVIDADES, e.actividad)}` : e.regreso ? `Regresar: ${e.regreso}` : ''),
           h('td', { class: 'detail-col' }, e.comentario || ''),
-          h('td', { class: 'actions no-print' }, isAdmin() || (e.createdBy === state.user.id && e.fecha === CAT.hoy) ? h('button', { class: 'link-btn', type: 'button', onclick: (ev) => confirmInline(ev.currentTarget, async () => { await api('DELETE', '/api/encuestas/' + e.id); toast('Encuesta eliminada'); await reload(); }) }, 'Eliminar') : null)))))),
+          h('td', { class: 'actions no-print' }, isAdmin() || (e.createdBy === state.user.id && e.fecha === CAT.hoy) ? h('button', { class: 'link-btn', type: 'button', onclick: (ev) => confirmInline(ev.currentTarget, async () => { await api('DELETE', '/api/encuestas/' + e.id); toast('Encuesta eliminada'); state.stale = true; window.Portal.route(); }) }, 'Eliminar') : null)))))),
       rows.length > view.limit ? h('button', { class: 'btn no-print', type: 'button', onclick: () => { view.limit += 50; render(); } }, 'Ver más') : null));
     root.append(...kids);
   }
@@ -213,6 +217,7 @@
   async function save(resultado) {
     const body = { sedeId: W.sedeId, pisoId: W.pisoId, referencia: W.referencia, fecha: W.fecha, encuestadorId: W.encuestadorId || undefined, hora: new Date().toTimeString().slice(0, 5), resultado, ...W.r };
     const r = await api('POST', '/api/encuestas', body);
+    state.stale = true; // el indicador de la iniciativa se recalcula al volver al tablero
     W.last = r; return r;
   }
 

@@ -70,6 +70,7 @@
       { key: 'satisfechos', label: 'Usuarios que dicen que el WiFi cumple sus expectativas', integer: true, min: 0, max: 5000, maxField: 'encuestas' },
     ],
     kpis: [
+      { key: 'acumulado', label: 'Encuestas acumuladas del levantamiento', unit: 'encuestas', short: 'encuestas', dir: 'up', baseline: 0, target: 2000, op: '>=', decimals: 0, note: 'Avance contra la meta total: 100 encuestas por día hábil (50 en Polanco y 50 en Reforma) durante 4 semanas.' },
       { key: 'encuestas', label: 'Encuestas por semana', unit: 'encuestas / semana', short: 'encuestas', dir: 'up', baseline: 0, target: 500, op: '>=', decimals: 0, note: 'Meta: 100 encuestas por día hábil, 50 en Polanco y 50 en Reforma, durante 4 semanas (2,000 en total).' },
       { key: 'satisfaccion', label: 'Usuarios satisfechos', unit: '%', short: '%', dir: 'up', baseline: null, target: null, decimals: 0, ratio: ['satisfechos', 'encuestas'], note: 'Porcentaje que responde "Sí" a la pregunta 1.' },
     ],

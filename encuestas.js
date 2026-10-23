@@ -21,7 +21,13 @@ module.exports = function init(ctx) {
   // La iniciativa se agrega una sola vez (las demás vienen del documento base).
   // Se llama al arrancar, después de sembrar la base (en una base nueva, primero van las 6 iniciativas del documento).
   function ensure() {
-    if (db.prepare("SELECT 1 FROM initiatives WHERE slug = 'encuestas'").get()) return;
+    const cur = db.prepare("SELECT id, def FROM initiatives WHERE slug = 'encuestas'").get();
+    if (cur) {
+      // v3.15.1: la métrica principal pasa a ser el acumulado contra la meta de 2,000
+      const def = JSON.parse(cur.def);
+      if (!def.kpis || def.kpis[0].key !== 'acumulado') { def.kpis = P.INICIATIVA.kpis; db.prepare('UPDATE initiatives SET def = ? WHERE id = ?').run(JSON.stringify(def), cur.id); }
+      return;
+    }
     if (!db.prepare('SELECT COUNT(*) AS n FROM initiatives').get().n) return;
     const sort = db.prepare('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM initiatives').get().n;
     db.prepare('INSERT INTO initiatives (slug, sort, def) VALUES (?,?,?)').run('encuestas', sort, JSON.stringify(P.INICIATIVA));
