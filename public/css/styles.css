@@ -722,3 +722,5 @@ td.lv, .chip.lv { color: var(--ink); }
 .mon-hist { margin-bottom: 16px; }
 .danger-text { color: var(--crit); }
 @media (max-width: 560px) { .mon-g2 { grid-template-columns: 1fr; } .mon-range { margin-left: 0; } }
+.mon-trio { display: grid; gap: 8px; }
+.mon-trio .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

@@ -67,8 +67,32 @@
   }
 
   /* ---------- Resumen para BBVA ---------- */
+  /* Métrica del periodo: sale de los mismos casos que el embudo, con las mismas fechas y sede. */
+  function periodoTrio(all, sedeName) {
+    const T = tally(all);
+    const contactados = T.exito + T.cita + T.sin_respuesta;
+    const k = (state.data.initiatives.find((i) => i.slug === 'monitoreo')?.kpis || []).find((x) => x.key === 'contactados') || {};
+    const porSemana = Number.isFinite(k.target) ? k.target : 25;
+    const semanas = Math.round((Date.parse(mondayOf(view.hasta)) - Date.parse(mondayOf(view.desde))) / (7 * 864e5)) + 1;
+    const meta = porSemana * semanas;
+    const ok = contactados >= meta;
+    const periodo = view.desde === view.hasta ? fullDate(view.desde) : `${dayMonth(view.desde)} – ${fullDate(view.hasta)}`;
+    const item = (label, num, unit, cls) => h('div', { class: 'trio-item' + (cls ? ' ' + cls : '') }, h('span', { class: 'trio-label' }, label), h('span', { class: 'trio-num' }, num), h('span', { class: 'trio-unit' }, unit));
+    return h('div', { class: 'mon-trio' },
+      h('p', { class: 'kpi-caption' }, `Usuarios contactados en el periodo · ${sedeName}`),
+      h('div', { class: 'trio' },
+        item('Métrica inicial', nf(k.baseline ?? 0), 'usuarios contactados por semana al inicio del programa'),
+        item('Métrica actual', nf(contactados), `usuarios contactados · ${periodo}`, 'trio-current'),
+        item('Métrica objetivo', nf(meta), `${nf(porSemana)} por semana × ${semanas} ${semanas === 1 ? 'semana' : 'semanas'}`)),
+      h('p', { class: 'facts' }, h('span', { class: 'pill pill-' + (ok ? 'good' : 'warn') }, ok ? 'Meta del periodo cumplida' : `Faltan ${nf(meta - contactados)} para la meta del periodo`),
+        ' Contactados = atendidos con éxito + cita agendada + sin respuesta. Son los mismos casos del nivel 1.'),
+      h('div', { class: 'others' },
+        h('div', { class: 'other' }, h('span', { class: 'other-label' }, 'Atendidos con éxito'), h('span', { class: 'other-num' }, `${nf(T.exito)} usuarios`)),
+        h('div', { class: 'other' }, h('span', { class: 'other-label' }, 'En espera (cita o sin respuesta)'), h('span', { class: 'other-num' }, `${nf(T.cita + T.sin_respuesta)} usuarios`))));
+  }
+
   function resumen(all, sedeName) {
-    const out = [...EXT.resumen.slice(0, 1)];
+    const out = [periodoTrio(all, sedeName)];
     if (!all.length) {
       out.push(h('section', { class: 'panel' }, h('p', { class: 'empty' }, 'No hay casos en este periodo. Amplía las fechas o registra un caso.')));
       out.push(...EXT.resumen.slice(1));
@@ -199,10 +223,12 @@
     drawer = { panel, titleEl };
     return drawer;
   }
+  // vuelve a pedir los totales semanales y el estado de la iniciativa para que todo coincida
+  function refreshAll() { CAT = null; state.stale = true; window.Portal.route(); }
   function closeDrawer(silent) {
     if (!drawer) return;
     drawer.panel.remove(); drawer = null; document.body.classList.remove('mon-drawer-open');
-    if (!silent && dirty) { dirty = false; CAT = null; reload().catch(() => {}); }
+    if (!silent && dirty) { dirty = false; refreshAll(); }
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawer && !e.target.closest?.('.menu')) closeDrawer(); });
   window.addEventListener('hashchange', () => { if (drawer) closeDrawer(true); dirty = false; });
@@ -436,7 +462,7 @@
             h('tbody', {}, r.hojas.map((x) => h('tr', {}, h('td', {}, x.hoja, x.nota ? h('span', { class: 'meta' }, x.nota) : null), h('td', {}, x.sede ? short(x.sede) : '—'), h('td', { class: 'num-col plain' }, x.casos))))),
           h('p', {}, 'Estados propuestos: ', M.ESTADOS.map((e) => `${e.short} ${r.porEstado[e.key]}`).join(' · '), '.'),
           r.totalAvisos ? h('details', { class: 'section' }, h('summary', {}, `${r.totalAvisos} avisos de fechas corregidas`), h('div', { class: 'section-body' }, h('ul', {}, r.avisos.map((a) => h('li', {}, a))))) : null,
-          h('div', { class: 'mon-dfoot' }, h('button', { class: 'btn btn-primary', type: 'button', disabled: !r.nuevos, onclick: async (e) => { e.currentTarget.disabled = true; try { const x = await send('guardar'); toast(`Se importaron ${x.nuevos} casos`); closeDrawer(true); CAT = null; view.desde = null; view.hasta = null; await reload(); view.desde = CAT.rango.min || view.desde; await reload(); } catch (err) { toast(err.message, 'error'); e.currentTarget.disabled = false; } } }, `Importar ${r.nuevos} casos`)));
+          h('div', { class: 'mon-dfoot' }, h('button', { class: 'btn btn-primary', type: 'button', disabled: !r.nuevos, onclick: async (e) => { e.currentTarget.disabled = true; try { const x = await send('guardar'); toast(`Se importaron ${x.nuevos} casos`); closeDrawer(true); const cat = await api('GET', '/api/monitoreo/catalogo'); view.hasta = todayStr(); view.desde = cat.rango.min || view.hasta; refreshAll(); } catch (err) { toast(err.message, 'error'); e.currentTarget.disabled = false; } } }, `Importar ${r.nuevos} casos`)));
       } catch (err) { toast(err.message, 'error'); }
     };
     openDrawer('Importar histórico', h('div', {},

@@ -406,7 +406,7 @@
     add(
       h('nav', { class: 'crumb no-present' }, h('a', { href: '#/' }, '← Tablero')),
       h('header', { class: 'detail-head ini-general' },
-        h('div', {}, h('p', { class: 'eyebrow' }, it.subtitle), h('h1', {}, it.name), noKpi ? null : pill(main.status)),
+        h('div', {}, h('p', { class: 'eyebrow' }, it.subtitle), h('h1', {}, it.name), noKpi || slug === 'monitoreo' ? null : pill(main.status)),
         h('div', { class: 'form-actions head-actions no-present' },
           exportMenu(() => [
             pdfItem(slug === 'recorridos' ? 'Iniciativa y recorridos del periodo' : slug === 'rediseno' ? (window.PortalRediseno?.pdfHint() || 'Iniciativa y seguimiento diario') : 'Esta iniciativa'),
