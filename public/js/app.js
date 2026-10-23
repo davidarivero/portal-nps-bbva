@@ -294,7 +294,9 @@
     // gráfica con selector de indicador
     const chartBox = h('div', { class: 'chart' });
     const chartTitle = h('h2', {}, '');
+    let curEv = null;
     const drawChart = (ev) => {
+      curEv = ev;
       const kk = ev.kpi;
       chartTitle.textContent = kk.label + (kk.unit === '%' ? ' (%)' : ` (${kk.unit})`);
       const pts = [];
@@ -388,6 +390,19 @@
         h('label', {}, noKpi ? 'Recorridos comprometidos por semana' : 'Objetivo', h('input', { name: 'target', type: 'number', step: 'any', min: 0, value: kk.target ?? '', id: `g-t-${kk.key}` })),
         h('button', { class: 'btn', type: 'submit' }, 'Guardar'))))) : null;
 
+    const kpiBlock = noKpi ? null : h('div', { class: 'ini-general' }, h('p', { class: 'kpi-caption' }, k.label), trio,
+      facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null, othersBox);
+    const chartPanel = noKpi ? null : h('section', { class: 'panel ini-general' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
+      h('p', { class: 'legend' },
+        h('span', { class: 'lg lg-line' }, 'Valor semanal'),
+        k.target !== null && k.target !== undefined ? h('span', { class: 'lg lg-target' }, 'Objetivo') : null,
+        k.limit ? h('span', { class: 'lg lg-limit' }, k.limitLabel) : null));
+    const valueBlock = h('div', { class: 'two ini-general' },
+      h('section', { class: 'panel' },
+        h('h2', {}, 'Valor generado al negocio'), h('p', { class: 'value-text' }, it.value),
+        h('h2', {}, 'Impacto esperado'), h('ul', { class: 'impact' }, it.impact.map((i) => h('li', {}, i)))),
+      h('section', { class: 'panel' }, h('h2', {}, 'Hitos'), msList, msForm));
+    const sectionsBlock = h('section', { class: 'sections ini-general' }, (it.sections || []).map(renderSection), goals);
     add(
       h('nav', { class: 'crumb no-present' }, h('a', { href: '#/' }, '← Tablero')),
       h('header', { class: 'detail-head ini-general' },
@@ -399,36 +414,28 @@
             ...(slug === 'rediseno' && window.PortalRediseno ? window.PortalRediseno.exportItems() : []),
             ...(slug === 'encuestas' && window.PortalEncuestas ? window.PortalEncuestas.exportItems() : []),
             ...(slug === 'monitoreo' && window.PortalMonitoreo ? window.PortalMonitoreo.exportItems() : []),
-            { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
+            slug === 'monitoreo' ? null : { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
           slug === 'encuestas' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/encuesta/nueva' }, 'Nueva encuesta') : null,
-          slug === 'monitoreo' && canWrite() ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalMonitoreo?.open() }, 'Registrar revisión') : null,
+          slug === 'monitoreo' && isAdmin() ? h('button', { class: 'btn', type: 'button', onclick: () => window.PortalMonitoreo?.importar() }, 'Importar histórico') : null,
+          slug === 'monitoreo' && canWrite() ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalMonitoreo?.open() }, 'Registrar caso') : null,
           !['recorridos', 'rediseno', 'encuestas', 'monitoreo'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
-      noKpi ? null : h('div', { class: 'ini-general' }, h('p', { class: 'kpi-caption' }, k.label), trio,
-        facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null, othersBox),
+      slug === 'monitoreo' ? null : kpiBlock,
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
       slug === 'encuestas' ? h('div', { id: 'enc-root', class: 'rd-root' }) : null,
       slug === 'monitoreo' ? h('div', { id: 'mon-root', class: 'rd-root' }) : null,
-      noKpi ? null : h('section', { class: 'panel ini-general' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
-        h('p', { class: 'legend' },
-          h('span', { class: 'lg lg-line' }, 'Valor semanal'),
-          k.target !== null && k.target !== undefined ? h('span', { class: 'lg lg-target' }, 'Objetivo') : null,
-          k.limit ? h('span', { class: 'lg lg-limit' }, k.limitLabel) : null)),
-      h('div', { class: 'two ini-general' },
-        h('section', { class: 'panel' },
-          h('h2', {}, 'Valor generado al negocio'), h('p', { class: 'value-text' }, it.value),
-          h('h2', {}, 'Impacto esperado'), h('ul', { class: 'impact' }, it.impact.map((i) => h('li', {}, i)))),
-        h('section', { class: 'panel' }, h('h2', {}, 'Hitos'), msList, msForm)),
-      h('section', { class: 'panel ini-general' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
-      h('section', { class: 'sections ini-general' }, (it.sections || []).map(renderSection), goals),
+      slug === 'monitoreo' ? null : chartPanel,
+      slug === 'monitoreo' ? null : valueBlock,
+      slug === 'monitoreo' ? null : h('section', { class: 'panel ini-general' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
+      slug === 'monitoreo' ? null : sectionsBlock,
     );
-    if (!noKpi) drawChart(main);
+    if (!noKpi && slug !== 'monitoreo') drawChart(main);
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
     if (slug === 'recorridos' && window.PortalRecorridos) window.PortalRecorridos.mount(document.getElementById('rec-root'));
     if (slug === 'encuestas' && window.PortalEncuestas) window.PortalEncuestas.mount(document.getElementById('enc-root'));
-    if (slug === 'monitoreo' && window.PortalMonitoreo) window.PortalMonitoreo.mount(document.getElementById('mon-root')).then(() => { if (state.openMon) { state.openMon = false; window.PortalMonitoreo.open(); } });
+    if (slug === 'monitoreo' && window.PortalMonitoreo) window.PortalMonitoreo.mount(document.getElementById('mon-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock], draw: () => drawChart(curEv || main) }).then(() => { if (state.openMon) { state.openMon = false; window.PortalMonitoreo.open(); } });
   }
 
   /** Confirmación en la misma página (sin diálogos del navegador). */
