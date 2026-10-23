@@ -13,6 +13,7 @@ const seed = require('./seed');
 const initRecorridos = require('./recorridos');
 const initRediseno = require('./rediseno');
 const initEncuestas = require('./encuestas');
+const initMonitoreo = require('./monitoreo');
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -323,6 +324,19 @@ function loadData() {
       });
     }
   }
+  // Monitoreo proactivo: los totales semanales salen de los casos registrados.
+  if (monitoreo && initiatives.some((i) => i.slug === 'monitoreo')) {
+    const weeks = monitoreo.weeklySummary();
+    const covered = new Set(weeks.map((w) => w.week));
+    merged = merged.filter((r) => !(r.initiative === 'monitoreo' && covered.has(r.week)));
+    for (const w of weeks) {
+      merged.push({
+        id: null, auto: true, initiative: 'monitoreo', week: w.week, values: { contactados: w.contactados, corregidos: w.corregidos, en_espera: w.en_espera },
+        detail: `${w.revisados} usuarios revisados: ${w.contactados} contactados (${w.corregidos} atendidos con éxito, ${w.en_espera} con cita o sin respuesta), ${w.sin_datos} sin datos para contactar${w.pendientes ? ` y ${w.pendientes} por contactar` : ''}.`,
+        sede: '', evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Casos registrados',
+      });
+    }
+  }
   merged.sort((a, b) => a.week.localeCompare(b.week));
   const rdSedes = db.prepare('SELECT s.id, s.name FROM rd_sedes s WHERE EXISTS (SELECT 1 FROM rd_aps a WHERE a.sede_id = s.id) ORDER BY s.sort, s.id').all();
   const recorridosTotal = recorridos ? db.prepare("SELECT COUNT(*) AS n FROM recorridos WHERE status = 'completo'").get().n : null;
@@ -423,6 +437,7 @@ async function api(req, res, url) {
     if (it.slug === 'recorridos') throw new HttpError(400, 'Los recorridos proactivos ahora se capturan por día en la sección Recorridos.');
     if (it.slug === 'rediseno') throw new HttpError(400, 'El rediseño WLAN ahora se captura por día dentro de su tablero.');
     if (it.slug === 'encuestas') throw new HttpError(400, 'Las encuestas se registran una por una desde la iniciativa (botón "Nueva encuesta").');
+    if (it.slug === 'monitoreo') throw new HttpError(400, 'El monitoreo proactivo ahora se registra caso por caso dentro de su iniciativa (botón "Registrar revisión").');
     if (!isDate(body.week)) throw new HttpError(400, 'Selecciona una fecha válida para la semana.');
     const week = mondayOf(body.week);
     if (week > mondayOf(new Date().toISOString().slice(0, 10))) throw new HttpError(400, 'No se pueden capturar semanas futuras.');
@@ -590,12 +605,14 @@ async function api(req, res, url) {
   if (await recorridos.handle(req, res, url, user)) return;
   if (await rediseno.handle(req, res, url, user)) return;
   if (await encuestas.handle(req, res, url, user)) return;
+  if (await monitoreo.handle(req, res, url, user)) return;
   throw new HttpError(404, 'Ruta no encontrada.');
 }
 
 const recorridos = initRecorridos({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const rediseno = initRediseno({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const encuestas = initEncuestas({ db, HttpError, send, readJson, audit, now, DATA_DIR });
+const monitoreo = initMonitoreo({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 
 /* ---------- servidor ---------- */
 const server = http.createServer(async (req, res) => {

@@ -366,6 +366,7 @@
           r.evidenceUrl ? h('a', { class: 'meta', href: r.evidenceUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Ver evidencia') : null),
         h('td', { class: 'nowrap' }, r.author, h('br'), h('span', { class: 'muted' }, localDate(r.updatedAt))),
         h('td', { class: 'actions no-present' },
+          r.auto && slug === 'monitoreo' ? h('button', { class: 'link-btn', type: 'button', onclick: () => document.getElementById('mon-root')?.scrollIntoView({ behavior: 'smooth' }) }, 'Ver casos') : null,
           r.auto && slug === 'recorridos' ? h('button', { class: 'link-btn', type: 'button', onclick: () => document.getElementById('rec-root')?.scrollIntoView({ behavior: 'smooth' }) }, 'Ver recorridos') : null,
           canWrite() && !r.auto ? h('a', { class: 'link-btn', href: `#/capturar/${slug}/${r.week}` }, 'Editar') : null,
           !r.auto && (isAdmin() || (state.user.role === 'ingeniero' && r.createdBy === state.user.id))
@@ -397,16 +398,19 @@
             ...(slug === 'recorridos' && window.PortalRecorridos ? window.PortalRecorridos.exportItems() : []),
             ...(slug === 'rediseno' && window.PortalRediseno ? window.PortalRediseno.exportItems() : []),
             ...(slug === 'encuestas' && window.PortalEncuestas ? window.PortalEncuestas.exportItems() : []),
+            ...(slug === 'monitoreo' && window.PortalMonitoreo ? window.PortalMonitoreo.exportItems() : []),
             { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
           slug === 'encuestas' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/encuesta/nueva' }, 'Nueva encuesta') : null,
-          !['recorridos', 'rediseno', 'encuestas'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
+          slug === 'monitoreo' && canWrite() ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalMonitoreo?.open() }, 'Registrar revisión') : null,
+          !['recorridos', 'rediseno', 'encuestas', 'monitoreo'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
       noKpi ? null : h('div', { class: 'ini-general' }, h('p', { class: 'kpi-caption' }, k.label), trio,
         facts.length ? h('p', { class: 'facts' }, facts.join(' ')) : null, othersBox),
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
       slug === 'encuestas' ? h('div', { id: 'enc-root', class: 'rd-root' }) : null,
+      slug === 'monitoreo' ? h('div', { id: 'mon-root', class: 'rd-root' }) : null,
       noKpi ? null : h('section', { class: 'panel ini-general' }, h('div', { class: 'panel-head' }, chartTitle, tabs), chartBox,
         h('p', { class: 'legend' },
           h('span', { class: 'lg lg-line' }, 'Valor semanal'),
@@ -424,6 +428,7 @@
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
     if (slug === 'recorridos' && window.PortalRecorridos) window.PortalRecorridos.mount(document.getElementById('rec-root'));
     if (slug === 'encuestas' && window.PortalEncuestas) window.PortalEncuestas.mount(document.getElementById('enc-root'));
+    if (slug === 'monitoreo' && window.PortalMonitoreo) window.PortalMonitoreo.mount(document.getElementById('mon-root')).then(() => { if (state.openMon) { state.openMon = false; window.PortalMonitoreo.open(); } });
   }
 
   /** Confirmación en la misma página (sin diálogos del navegador). */
@@ -449,7 +454,8 @@
     if (slugArg === 'recorridos') { window.location.hash = '#/recorrido/nuevo'; return; }
     if (slugArg === 'rediseno') { window.location.hash = '#/iniciativa/rediseno'; return; }
     if (slugArg === 'encuestas') { window.location.hash = '#/encuesta/nueva'; return; }
-    const inits = state.data.initiatives.filter((i) => !['recorridos', 'rediseno', 'encuestas'].includes(i.slug));
+    if (slugArg === 'monitoreo') { state.openMon = true; window.location.hash = '#/iniciativa/monitoreo'; return; }
+    const inits = state.data.initiatives.filter((i) => !['recorridos', 'rediseno', 'encuestas', 'monitoreo'].includes(i.slug));
     let it = inits.find((i) => i.slug === slugArg) || inits[0];
     const today = todayStr();
 
@@ -540,7 +546,7 @@
     add(
       h('header', { class: 'page-head' }, h('h1', {}, 'Capturar avance semanal'),
         h('p', { class: 'muted' }, `Un registro por iniciativa por semana. Capturas como ${state.user.name}. `,
-          h('a', { href: '#/recorrido/nuevo' }, 'Los recorridos proactivos se capturan por día aquí'), ' y el ', h('a', { href: '#/iniciativa/rediseno' }, 'rediseño WLAN, dentro de su tablero'), '.')),
+          h('a', { href: '#/recorrido/nuevo' }, 'Los recorridos proactivos se capturan por día aquí'), ', el ', h('a', { href: '#/iniciativa/rediseno' }, 'rediseño WLAN, dentro de su tablero'), ' y el ', h('a', { href: '#/capturar/monitoreo' }, 'monitoreo proactivo, caso por caso'), '.')),
       form);
     buildFields();
   }
