@@ -100,5 +100,5 @@
   /** Último día hábil del levantamiento: 20 días hábiles a partir del inicio. */
   function finDe(inicio) { let d = inicio, n = habil(d) ? 1 : 0; while (n < META.diasHabiles) { d = addDays(d, 1); if (habil(d)) n += 1; } return d; }
 
-  return { META, SEDES, RESULTADOS, INCONVENIENTES, FRECUENCIAS, ACTIVIDADES, SPEECH, PREGUNTAS, RECOMENDACIONES, INICIATIVA, plain, addDays, habil, diasHabiles, finDe };
+  return { META, SEDES, RESULTADOS, INCONVENIENTES, FRECUENCIAS, ACTIVIDADES, SPEECH, PREGUNTAS, RECOMENDACIONES, INICIATIVA, plain, addDays, diasHabiles, finDe };
 });

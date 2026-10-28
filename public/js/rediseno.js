@@ -501,6 +501,8 @@
   let lastFindings = [], lastScopeName = '', lastC = null, dialog = null;
   const icon = (k) => (k === 'alarm' ? '▲' : k === 'regular' ? '!' : k === 'good' ? '↓' : 'i');
   const findingsList = (fnd) => h('ul', { class: 'rd-findings' }, fnd.map((f) => h('li', { class: 'fd fd-' + f.kind }, h('span', { class: 'fd-icon', 'aria-hidden': 'true' }, icon(f.kind)), h('div', {}, h('strong', {}, f.title), h('p', {}, f.text)))));
+  // la ventana no debe quedarse abierta al cambiar de página
+  window.addEventListener('hashchange', () => { if (dialog?.open) dialog.close(); });
   function openFindings() {
     if (!dialog || !dialog.isConnected) {
       dialog = h('dialog', { class: 'rd-dialog', 'aria-labelledby': 'rd-dlg-title' });

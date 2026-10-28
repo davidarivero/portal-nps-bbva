@@ -368,7 +368,6 @@
           r.evidenceUrl ? h('a', { class: 'meta', href: r.evidenceUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Ver evidencia') : null),
         h('td', { class: 'nowrap' }, r.author, h('br'), h('span', { class: 'muted' }, localDate(r.updatedAt))),
         h('td', { class: 'actions no-present' },
-          r.auto && slug === 'monitoreo' ? h('button', { class: 'link-btn', type: 'button', onclick: () => document.getElementById('mon-root')?.scrollIntoView({ behavior: 'smooth' }) }, 'Ver casos') : null,
           r.auto && slug === 'recorridos' ? h('button', { class: 'link-btn', type: 'button', onclick: () => document.getElementById('rec-root')?.scrollIntoView({ behavior: 'smooth' }) }, 'Ver recorridos') : null,
           canWrite() && !r.auto ? h('a', { class: 'link-btn', href: `#/capturar/${slug}/${r.week}` }, 'Editar') : null,
           !r.auto && (isAdmin() || (state.user.role === 'ingeniero' && r.createdBy === state.user.id))
@@ -663,7 +662,7 @@
         h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Guardar contraseña'))));
   }
 
-  window.Portal = { h, add, api, toast, state, view, canWrite, isAdmin, confirmInline, exportMenu, pdfItem, dayMonth, fullDate, weekLabel, weekRange, todayStr, MONTHS, fmt, route: () => route() };
+  window.Portal = { h, add, api, toast, state, view, canWrite, isAdmin, confirmInline, exportMenu, pdfItem, dayMonth, fullDate, todayStr, MONTHS, route: () => route() };
 
   /* ---------- ruteo ---------- */
   async function reload(msg, hash) {

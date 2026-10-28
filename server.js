@@ -437,7 +437,7 @@ async function api(req, res, url) {
     if (it.slug === 'recorridos') throw new HttpError(400, 'Los recorridos proactivos ahora se capturan por día en la sección Recorridos.');
     if (it.slug === 'rediseno') throw new HttpError(400, 'El rediseño WLAN ahora se captura por día dentro de su tablero.');
     if (it.slug === 'encuestas') throw new HttpError(400, 'Las encuestas se registran una por una desde la iniciativa (botón "Nueva encuesta").');
-    if (it.slug === 'monitoreo') throw new HttpError(400, 'El monitoreo proactivo ahora se registra caso por caso dentro de su iniciativa (botón "Registrar revisión").');
+    if (it.slug === 'monitoreo') throw new HttpError(400, 'El monitoreo proactivo ahora se registra caso por caso dentro de su iniciativa (botón "Registrar caso").');
     if (!isDate(body.week)) throw new HttpError(400, 'Selecciona una fecha válida para la semana.');
     const week = mondayOf(body.week);
     if (week > mondayOf(new Date().toISOString().slice(0, 10))) throw new HttpError(400, 'No se pueden capturar semanas futuras.');
