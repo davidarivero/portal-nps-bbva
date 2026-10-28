@@ -210,6 +210,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid var(--prog); outl
 .ch-ref { stroke-width: 1.5; stroke-dasharray: 6 4; }
 .ch-ref-target { stroke: var(--good); }
 .ch-ref-limit { stroke: var(--warn); stroke-dasharray: 2 4; }
+.ch-ref-crit { stroke: var(--crit); }
 .ch-ref-label { font: 600 12px var(--font-body); fill: var(--ink-2); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .ch-cross { stroke: var(--ink-3); stroke-width: 1; }
 .chart rect:focus { outline: none; }
@@ -222,6 +223,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid var(--prog); outl
 .lg::before { content: ""; width: 22px; height: 0; border-top: 2px solid var(--series); }
 .lg-target::before { border-top: 2px dashed var(--good); }
 .lg-limit::before { border-top: 2px dotted var(--warn); }
+.lg-crit::before { border-top: 2px dashed var(--crit); }
 
 .timeline { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--line); display: grid; gap: 16px; }
 .tl-item { position: relative; display: grid; gap: 2px; }

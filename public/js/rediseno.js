@@ -23,6 +23,11 @@
   }
   const level = (v) => (v === null || v === undefined ? null : v > D.umbrales.alarm ? 'alarm' : v >= D.umbrales.regular ? 'regular' : 'good');
   const lvClass = (v) => { const l = level(v); return l ? ' lv lv-' + l : ''; };
+  // ocupación de canal: alta desde 75 %, criterio de rediseño desde 85 %
+  const CA = () => D.umbrales.canalAlto ?? 75, CR = () => D.umbrales.canalRediseno ?? 85;
+  const cLevel = (v) => (v === null || v === undefined ? null : v >= CR() ? 'alarm' : v >= CA() ? 'regular' : 'good');
+  const cClass = (v) => { const l = cLevel(v); return l ? ' lv lv-' + l : ''; };
+  const CLV = { good: 'Normal', regular: 'Alta', alarm: 'Criterio de rediseño' };
   const levelPill = (l) => h('span', { class: 'pill lvp lvp-' + l }, h('span', { class: 'pill-icon', 'aria-hidden': 'true' }, l === 'good' ? '✓' : l === 'regular' ? '!' : '▲'), LV[l]);
 
   /* ---------- cálculo ---------- */
@@ -86,7 +91,7 @@
       const by = (f) => withData.filter((a) => f(a) !== null).sort((x, y) => f(y) - f(x));
       const u = by((a) => a.uAvg), c = by((a) => a.cAvg);
       push('info', 'Usuarios por AP', `Mayor promedio: ${u[0].name} con ${nf(u[0].uAvg)} (pico ${u[0].uMax}). Menor promedio: ${u[u.length - 1].name} con ${nf(u[u.length - 1].uAvg)}.`);
-      if (c.length) push('info', 'Utilización de canal (informativa)', `Mayor promedio: ${c[0].name} con ${nf(c[0].cAvg, 0)}% (pico ${nf(c[0].cMax, 0)}%). Menor promedio: ${c[c.length - 1].name} con ${nf(c[c.length - 1].cAvg, 0)}%.`);
+      if (c.length) push('info', 'Utilización de canal', `Mayor promedio: ${c[0].name} con ${nf(c[0].cAvg, 0)}% (pico ${nf(c[0].cMax, 0)}%). Menor promedio: ${c[c.length - 1].name} con ${nf(c[c.length - 1].cAvg, 0)}%.`);
       const idle = withData.filter((a) => a.uMax === 0);
       if (idle.length) push('regular', `${idle.length} AP sin usuarios en todo el periodo`, idle.map((a) => a.name).join(', ') + '. Conviene confirmar si el área está desocupada o si el AP tiene un problema.');
     }
@@ -94,7 +99,7 @@
   }
 
   /* ---------- gráfica de dos series con umbrales ---------- */
-  function lineChart(box, o) { // o: {days, series:[{name, values, cls}], refs:[{value,label,kind}], suffix, max}
+  function lineChart(box, o) { // o: {days, series:[{name, values, cls}], refs:[{value,label,kind,below}], suffix, max, cap}
     const NS = 'http://www.w3.org/2000/svg';
     const el = (t, a, txt) => { const n = document.createElementNS(NS, t); for (const [k, v] of Object.entries(a)) n.setAttribute(k, v); if (txt !== undefined) n.textContent = txt; return n; };
     const draw = () => {
@@ -102,13 +107,14 @@
       const all = o.series.flatMap((s) => s.values.filter((v) => v !== null));
       const top0 = Math.max(o.max || 0, ...all, ...(o.refs || []).map((r) => r.value)) * 1.08 || 1;
       const raw = top0 / 4, exp = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / exp;
-      const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * exp;
-      const top = Math.ceil(top0 / step) * step;
+      let step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * exp;
+      let top = Math.ceil(top0 / step) * step;
+      if (o.cap) { top = o.cap; step = o.cap / 4; } // porcentajes: eje fijo de 0 a 100
       const x = (i) => (o.days.length === 1 ? (m.l + W - m.r) / 2 : m.l + 8 + (i * (W - m.l - m.r - 16)) / (o.days.length - 1));
       const y = (v) => m.t + (1 - v / top) * (H - m.t - m.b);
       const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': o.title });
       for (let v = 0; v <= top + 1e-9; v += step) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: v ? 'ch-grid' : 'ch-axis' })); svg.append(el('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'ch-tick' }, nf(v, 1) + (o.suffix || ''))); }
-      for (const r of o.refs || []) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(r.value), y2: y(r.value), class: 'ch-ref ch-ref-' + r.kind })); svg.append(el('text', { x: m.l + 6, y: y(r.value) - 5, 'text-anchor': 'start', class: 'ch-ref-label' }, r.label)); }
+      for (const r of o.refs || []) { svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(r.value), y2: y(r.value), class: 'ch-ref ch-ref-' + r.kind })); svg.append(el('text', { x: m.l + 6, y: y(r.value) + (r.below ? 15 : -5), 'text-anchor': 'start', class: 'ch-ref-label' }, r.label)); }
       const every = Math.ceil(o.days.length / Math.max(3, Math.floor((W - m.l - m.r) / 58)));
       o.days.forEach((d, i) => { if (i % every === 0 || i === o.days.length - 1) svg.append(el('text', { x: x(i), y: H - m.b + 18, 'text-anchor': i === 0 ? 'start' : i === o.days.length - 1 ? 'end' : 'middle', class: 'ch-xsub' }, dayMonth(d))); });
       for (const s of o.series) {
@@ -200,7 +206,7 @@
           const v = val(c, a, idx); if (v === null) return;
           const x = gx0 + k * (bw + 2), y = Yf(v);
           o += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(1, y1 - y)}" rx="2" fill="${COL[k]}"/>`;
-          if (bw >= 13) { const isL = c === last; const ink = idx ? (isL ? HEX.ink : HEX.ink3) : v > U.alarm ? HEX.critLine : v >= U.regular ? HEX.warnLine : isL ? HEX.ink : HEX.ink3; o += T(x + bw / 2, y - 5, nf(v, 0), bw >= 18 ? 14 : 12, ink, isL || (!idx && v >= U.regular) ? 700 : 400, 'middle'); }
+          if (bw >= 13) { const isL = c === last; const hi = idx ? v >= (U.canalAlto ?? 75) : v >= U.regular, crit = idx ? v >= (U.canalRediseno ?? 85) : v > U.alarm; const ink = crit ? HEX.critLine : hi ? HEX.warnLine : isL ? HEX.ink : HEX.ink3; o += T(x + bw / 2, y - 5, nf(v, 0), bw >= 18 ? 14 : 12, ink, isL || hi ? 700 : 400, 'middle'); }
         });
         o += T(x0 + i * gw + gw / 2, y1 + 24, short(a.name), 14, HEX.ink2, 600, 'middle');
       });
@@ -208,7 +214,7 @@
     };
     const uTop = Math.ceil(Math.max(U.alarm * 1.12, ...nums(aps.flatMap((a) => caps.map((c) => val(c, a, 0))))) / 10) * 10;
     g += chart(Y1, CH1, 'Usuarios por AP', 0, uTop, 10, '', [[U.alarm, HEX.critLine, '6 5', `Criterio de rediseño (${U.alarm})`], [U.regular, HEX.warnLine, '2 5', `Regular (${U.regular})`]]);
-    g += chart(Y2, CH2, 'Ocupación de canal por AP (%) · informativa', 1, 100, 25, '%', []);
+    g += chart(Y2, CH2, 'Ocupación de canal por AP (%)', 1, 100, 25, '%', [[U.canalRediseno ?? 85, HEX.critLine, '6 5', `Criterio de rediseño (${U.canalRediseno ?? 85}%)`], [U.canalAlto ?? 75, HEX.warnLine, '2 5', `Alta (${U.canalAlto ?? 75}%)`]]);
     const fy = H - 30;
     g += T(P, fy, 'AP identificado por piso y número (P32-05 = AP-P32-…-05). Sin sábados ni domingos.', 15, HEX.ink3);
     g += T(W - P, fy, `Generado el ${stamp(new Date().toISOString())} por ${state.user.name} · Sipnology`, 15, HEX.ink3, 400, 'end');
@@ -263,7 +269,7 @@
         // pico de los 2 días si cruza el corte "regular"
         const vs = caps.map((c) => val(c, a, idx));
         const lv0 = val(last, a, idx);
-        if (!idx) { const mx = Math.max(...nums(vs)); const km = vs.indexOf(mx); if (mx >= U.regular && caps[km] !== last && mx > (lv0 ?? -1)) o += T(X(i, km), Yf(mx) - 9, mx, 13, mx > U.alarm ? HEX.critLine : HEX.warnLine, 700, 'middle'); }
+        { const lo = idx ? (U.canalAlto ?? 75) : U.regular; const isCrit = (v) => (idx ? v >= (U.canalRediseno ?? 85) : v > U.alarm); const nv = nums(vs); const mx = nv.length ? Math.max(...nv) : -1; const km = vs.indexOf(mx); if (mx >= lo && caps[km] !== last && mx > (lv0 ?? -1)) o += T(X(i, km), Yf(mx) - 9, nf(mx, 0) + suf, 13, isCrit(mx) ? HEX.critLine : HEX.warnLine, 700, 'middle'); }
         if (lv0 !== null) { const xl = X(i, caps.length - 1); o += `<circle cx="${xl}" cy="${Yf(lv0)}" r="${r + 3.5}" fill="${HEX.red}" stroke="#fff" stroke-width="2"/>` + T(Math.min(xl, x1 - 12), Yf(lv0) - 13, nf(lv0, 0) + suf, 15, HEX.ink, 700, 'middle'); }
         o += T(x0 + i * gw + gw / 2, y1 + 26, short(a.name), 14, HEX.ink2, 600, 'middle');
       });
@@ -271,7 +277,7 @@
     };
     const uTop = Math.ceil(Math.max(U.alarm * 1.12, ...nums(aps.flatMap((a) => caps.map((c) => val(c, a, 0))))) / 10) * 10;
     g += chart(Y1, CH1, 'Usuarios por AP', 'Cada punto es una captura, en orden de hora de izquierda a derecha.', 0, uTop, 10, '', [[U.alarm, HEX.critLine, '6 5', `Criterio de rediseño (${U.alarm})`], [U.regular, HEX.warnLine, '2 5', `Regular (${U.regular})`]]);
-    g += chart(Y2, CH2, 'Ocupación de canal por AP (%) · informativa', 'Mismo orden de capturas que la gráfica de usuarios.', 1, 100, 25, '%', []);
+    g += chart(Y2, CH2, 'Ocupación de canal por AP (%)', 'Mismo orden de capturas que la gráfica de usuarios.', 1, 100, 25, '%', [[U.canalRediseno ?? 85, HEX.critLine, '6 5', `Criterio de rediseño (${U.canalRediseno ?? 85}%)`], [U.canalAlto ?? 75, HEX.warnLine, '2 5', `Alta (${U.canalAlto ?? 75}%)`]]);
     const fy = H - 30;
     g += T(P, fy, 'AP identificado por piso y número (P32-05 = AP-P32-…-05). Sin sábados ni domingos.', 15, HEX.ink3);
     g += T(W - P, fy, `Generado el ${stamp(new Date().toISOString())} por ${state.user.name} · Sipnology`, 15, HEX.ink3, 400, 'end');
@@ -424,7 +430,7 @@
       h('div', { class: 'tile' + lvClass(S.uMax) }, h('span', { class: 'tile-label' }, 'Pico de usuarios en un AP'), h('span', { class: 'tile-num' }, nf(S.uMax, 0)),
         h('span', { class: 'tile-sub' }, `${LV[level(S.uMax)]} · criterio de rediseño: más de ${D.umbrales.alarm}`)),
       h('div', { class: 'tile' }, h('span', { class: 'tile-label' }, `AP que superaron ${D.umbrales.alarm}`), h('span', { class: 'tile-num' }, sub), h('span', { class: 'tile-sub' }, `de ${S.aps.length} AP monitoreados`)),
-      h('div', { class: 'tile' }, h('span', { class: 'tile-label' }, 'Utilización de canal'), h('span', { class: 'tile-num' }, S.cAvg === null ? '—' : nf(S.cAvg, 0) + '%'), h('span', { class: 'tile-sub' }, `Promedio · pico ${S.cMax === null ? '—' : nf(S.cMax, 0) + '%'} · no forma parte de la métrica`)),
+      h('div', { class: 'tile' + cClass(S.cAvg) }, h('span', { class: 'tile-label' }, 'Utilización de canal'), h('span', { class: 'tile-num' }, S.cAvg === null ? '—' : nf(S.cAvg, 0) + '%'), h('span', { class: 'tile-sub' }, `Promedio · pico ${S.cMax === null ? '—' : nf(S.cMax, 0) + '%'}${S.cMax === null ? '' : ' (' + CLV[cLevel(S.cMax)].toLowerCase() + ')'} · alta desde ${CA()}%, rediseño desde ${CR()}%`)),
       h('div', { class: 'tile tile-wide' }, h('span', { class: 'tile-label' }, `Días-AP por nivel, según su pico diario (${tot})`),
         h('div', { class: 'mix', role: 'img', 'aria-label': `Buenos ${tally.good}, regulares ${tally.regular}, alarmantes ${tally.alarm}` }, seg('good'), seg('regular'), seg('alarm')),
         h('div', { class: 'mix-legend' }, [['good', `Bueno, menos de ${D.umbrales.regular}`], ['regular', `Regular, de ${D.umbrales.regular} a ${D.umbrales.alarm}`], ['alarm', `Alarmante, más de ${D.umbrales.alarm}`]].map(([k, t]) => h('span', {}, h('i', { class: 'sw lv-' + k }), `${t}: ${tally[k]} (${tot ? Math.round((tally[k] / tot) * 100) : 0}%)`))))));
@@ -432,7 +438,7 @@
     const c1 = h('div', { class: 'chart' }), c2 = h('div', { class: 'chart' });
     push(h('div', { class: 'two' },
       h('section', { class: 'panel' }, h('h2', {}, `Usuarios por AP · ${S.name}`), c1, h('p', { class: 'legend' }, h('span', { class: 'lg lg-line' }, 'Promedio diario'), h('span', { class: 'lg lg-peak' }, 'Pico diario'), h('span', { class: 'lg lg-limit' }, `Criterio de rediseño (${D.umbrales.alarm})`))),
-      h('section', { class: 'panel' }, h('h2', {}, `Utilización de canal · ${S.name}`), c2, h('p', { class: 'legend' }, h('span', { class: 'lg lg-line' }, 'Promedio diario'), h('span', { class: 'lg lg-peak' }, 'Pico diario'), h('span', { class: 'muted' }, 'Informativa: no forma parte de la métrica')))));
+      h('section', { class: 'panel' }, h('h2', {}, `Utilización de canal · ${S.name}`), c2, h('p', { class: 'legend' }, h('span', { class: 'lg lg-line' }, 'Promedio diario'), h('span', { class: 'lg lg-peak' }, 'Pico diario'), h('span', { class: 'lg lg-limit' }, `Alta (${CA()}%)`), h('span', { class: 'lg lg-crit' }, `Criterio de rediseño (${CR()}%)`)))));
 
     // estadística por sede
     push(h('section', { class: 'tests rd-general' }, h('h2', {}, 'Estadística por sede'),
@@ -443,7 +449,7 @@
           h('div', { class: 'rd-sede-nums' },
             h('div', {}, h('span', { class: 'tile-label' }, 'Promedio'), h('span', { class: 'rd-num' + lvClass(s.uAvg) }, nf(s.uAvg))),
             h('div', {}, h('span', { class: 'tile-label' }, 'Pico'), h('span', { class: 'rd-num' + lvClass(s.uMax) }, nf(s.uMax, 0))),
-            h('div', {}, h('span', { class: 'tile-label' }, 'Canal'), h('span', { class: 'rd-num' }, s.cAvg === null ? '—' : nf(s.cAvg, 0) + '%'))),
+            h('div', { title: s.cMax === null ? '' : `Pico de canal: ${nf(s.cMax, 0)}% (${CLV[cLevel(s.cMax)].toLowerCase()})` }, h('span', { class: 'tile-label' }, 'Canal'), h('span', { class: 'rd-num' + cClass(s.cAvg) }, s.cAvg === null ? '—' : nf(s.cAvg, 0) + '%'))),
           s.n ? spark(s.series) : null,
           h('p', { class: 'tile-sub' }, `${s.aps.length} AP · ${s.n} lecturas`, t && t.pct !== null ? ` · tendencia ${t.pct > 0 ? '+' : '−'}${nf(Math.abs(t.pct), 0)}%` : ''),
           h('div', { class: 'form-actions no-print' },
@@ -460,7 +466,7 @@
           h('thead', {}, h('tr', {}, h('th', {}, 'AP'), showDays.map((d) => h('th', { class: 'sub' }, dayMonth(d))), h('th', { class: 'sub grp' }, 'Prom.'), h('th', { class: 'sub' }, 'Pico'), h('th', { class: 'sub' }, 'Canal prom.'), h('th', { class: 'sub' }, 'Canal pico'), h('th', { class: 'sub' }, `Días > ${D.umbrales.alarm}`))),
           h('tbody', {}, s.aps.map((a) => h('tr', {}, h('td', { class: 'nowrap' }, h('strong', {}, a.name)),
             showDays.map((d) => { const r = a.byDay.get(d); return r ? h('td', { class: 'num-col' + lvClass(r[4]), title: `${dayMonth(d)} · promedio ${nf(r[3])}, pico ${r[4]}, canal ${nf(r[5], 0)}% (pico ${nf(r[6], 0)}%), ${r[2]} lecturas` }, r[4]) : h('td', { class: 'num-col empty-cell' }, ''); }),
-            h('td', { class: 'num-col' + lvClass(a.uAvg) }, nf(a.uAvg)), h('td', { class: 'num-col' + lvClass(a.uMax) }, nf(a.uMax, 0)), h('td', { class: 'num-col plain' }, a.cAvg === null ? '—' : nf(a.cAvg, 0) + '%'), h('td', { class: 'num-col plain' }, a.cMax === null ? '—' : nf(a.cMax, 0) + '%'), h('td', { class: 'num-col plain' }, a.over)))))));
+            h('td', { class: 'num-col' + lvClass(a.uAvg) }, nf(a.uAvg)), h('td', { class: 'num-col' + lvClass(a.uMax) }, nf(a.uMax, 0)), h('td', { class: 'num-col' + (a.cAvg === null ? ' plain' : cClass(a.cAvg)) }, a.cAvg === null ? '—' : nf(a.cAvg, 0) + '%'), h('td', { class: 'num-col' + (a.cMax === null ? ' plain' : cClass(a.cMax)) }, a.cMax === null ? '—' : nf(a.cMax, 0) + '%'), h('td', { class: 'num-col plain' }, a.over)))))));
     };
     push((scope ? [scope] : C.sedes.filter((s) => s.n)).map(detail));
 
@@ -487,7 +493,7 @@
     if (view.autoFindings && fnd.length) { view.autoFindings = false; openFindings(); }
     const sr = S.series;
     lineChart(c1, { title: 'Usuarios por AP por día', days: C.days, max: D.umbrales.alarm, series: [{ name: 'Pico', values: sr.map((d) => d.uMax), cls: 's-peak' }, { name: 'Promedio', values: sr.map((d) => (d.uAvg === null ? null : Math.round(d.uAvg * 10) / 10)), cls: '' }], refs: [{ value: D.umbrales.alarm, label: `Criterio ${D.umbrales.alarm}`, kind: 'limit' }] });
-    lineChart(c2, { title: 'Utilización de canal por día', days: C.days, suffix: '%', series: [{ name: 'Pico', values: sr.map((d) => d.cMax), cls: 's-peak' }, { name: 'Promedio', values: sr.map((d) => (d.cAvg === null ? null : Math.round(d.cAvg * 10) / 10)), cls: '' }] });
+    lineChart(c2, { title: 'Utilización de canal por día', days: C.days, suffix: '%', cap: 100, refs: [{ value: CR(), label: `Criterio de rediseño ${CR()}%`, kind: 'crit' }, { value: CA(), label: `Alta ${CA()}%`, kind: 'limit', below: true }], series: [{ name: 'Pico', values: sr.map((d) => d.cMax), cls: 's-peak' }, { name: 'Promedio', values: sr.map((d) => (d.cAvg === null ? null : Math.round(d.cAvg * 10) / 10)), cls: '' }] });
   }
 
 
