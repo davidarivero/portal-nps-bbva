@@ -88,8 +88,51 @@
     ],
   };
 
+  /* ---------- reportes de detalle (Abaton e ISE) ---------- */
+  const ISE = {
+    12303: 'PEAP no permitido: el equipo intenta usuario y contraseña donde se exige certificado (EAP-TLS)',
+    11510: 'El equipo rechazó el método EAP de la política y no propuso otro',
+    11512: 'El equipo pidió un protocolo EAP no soportado',
+    11514: 'Mensaje TLS vacío: el equipo abandonó la negociación',
+    12514: 'Certificado del equipo emitido por una CA desconocida',
+    12520: 'El equipo rechazó el certificado de ISE',
+    12521: 'Falla TLS después de una alerta del equipo',
+    12918: 'Respuesta EAP con identificador que no corresponde',
+    12980: 'EAP-TTLS no permitido',
+    22047: 'Certificado del equipo sin atributo de usuario',
+  };
+  const CATEGORIAS = [
+    { key: 'sin_ise', label: '802.1X sin registro en ISE (timeout o abandono)', hint: 'La falla no llegó a ISE: el equipo no completó el intercambio 802.1X.' },
+    { key: 'eap', label: 'Método EAP no soportado por el equipo', hint: 'Configuración del supplicant: el equipo no ofrece EAP-TLS.' },
+    { key: 'certificado', label: 'Certificado o TLS', hint: 'CA desconocida, certificado de ISE rechazado o certificado sin usuario.' },
+    { key: 'dhcp', label: 'DHCP (sin solicitud o sin respuesta)', hint: 'El equipo se autenticó, pero no obtuvo dirección IP.' },
+    { key: 'otra', label: 'Asociación, DNS u otra', hint: '' },
+  ];
+  const CATEGORIA = Object.fromEntries(CATEGORIAS.map((c) => [c.key, c]));
+  const PRIORIDADES = [
+    { key: 'alta', label: 'Alta', cls: 'crit', hint: 'Sin conexión posterior y con 2 días o más, 9 fallos o más, o un código de ISE de configuración.' },
+    { key: 'media', label: 'Media', cls: 'warn', hint: 'Sin conexión posterior, un día y pocos fallos.' },
+    { key: 'baja', label: 'Baja', cls: 'good', hint: 'Se conectó con éxito después del último intento fallido.' },
+  ];
+  const PRIORIDAD = Object.fromEntries(PRIORIDADES.map((p) => [p.key, p]));
+  const codigoDe = (log) => { const m = String(log || '').match(/^\s*(\d{5})/); return m ? m[1] : null; };
+  /** Categoría de un dispositivo en investigación a partir del código de ISE y los tipos de falla de Abaton. */
+  function categoria(codigo, tipos) {
+    if (['11510', '11512', '12980', '12918'].includes(codigo)) return 'eap';
+    if (['12514', '12520', '12521', '11514', '22047'].includes(codigo)) return 'certificado';
+    const t = String(tipos || '').toUpperCase();
+    if (t.includes('802.1X')) return 'sin_ise';
+    if (t.includes('DHCP')) return 'dhcp';
+    return codigo ? 'eap' : 'otra';
+  }
+  function prioridad({ recuperado, dias, fallos, codigo }) {
+    if (recuperado) return 'baja';
+    if (dias >= 2 || fallos >= 9 || (codigo && codigo !== '12303')) return 'alta';
+    return 'media';
+  }
+
   const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const mondayOf = (s) => addDays(s, -((new Date(s + 'T00:00:00Z').getUTCDay() + 6) % 7));
 
-  return { SEDES, SEDE, SSIDS, META, plain, sedeDe, ssidDe, totales, ESTADOS, ESTADO, CAUSAS, INICIATIVA, addDays, mondayOf };
+  return { SEDES, SEDE, SSIDS, META, plain, sedeDe, ssidDe, totales, ESTADOS, ESTADO, CAUSAS, INICIATIVA, ISE, CATEGORIAS, CATEGORIA, PRIORIDADES, PRIORIDAD, codigoDe, categoria, prioridad, addDays, mondayOf };
 });

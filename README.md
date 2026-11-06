@@ -182,3 +182,12 @@ public/              login, aplicación, estilos, gráficas, imágenes y plantil
   js/*-comun.js      reglas compartidas entre navegador y servidor
 data/                base de datos y evidencias (se crea al arrancar; no se sube a GitHub)
 ```
+
+### Reportes de detalle Abaton e ISE (v3.25)
+
+En Monitoreo 2.0 → Registro diario → «Cargar reportes Abaton / ISE» se suben uno o varios .xlsx a la vez; el portal reconoce el formato, la sede y el día:
+
+- **Abaton (equipos sin conexión, `Polanco_26102026.xlsx`)**: un renglón por dispositivo con falla. Valida contra los fallidos y 12303 de la lectura diaria, separa 12303 del universo en investigación y crea o actualiza un caso por sede+MAC con prioridad (alta, media o baja), categoría, días y fallos. Al recargar el mismo día se reemplaza el detalle y los casos conservan su seguimiento.
+- **ISE (RADIUS Authentications, `REPORTE_ISE_26_Octubre_Polanco.xlsx`)**: eventos fallidos resumidos por código, piso y AP. ISE corta a las 21:00, así que el archivo de un día trae eventos de la noche anterior.
+
+El reporte ejecutivo agrega la sección «Análisis de detalle» (composición, recurrencia, códigos de ISE, pisos y AP). Tablas nuevas: cx_dispositivos, cx_ise_codigo y cx_ise_lugar (aditivas).

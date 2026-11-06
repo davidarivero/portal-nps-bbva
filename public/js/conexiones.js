@@ -12,9 +12,12 @@
   const ddmm = (ts) => `${ts.slice(0, 10).split('-').reverse().join('/')} ${ts.slice(11, 16)}`;
   const COLOR = { ok: '#3a9a6a', auth: '#d9a23a', inv: '#c8141b' };
   const TABS = [['resumen', 'Reporte ejecutivo'], ['registro', 'Registro diario'], ['investigacion', 'Universo en investigación'], ['acerca', 'Acerca de la iniciativa']];
-  const view = { tab: 'resumen', sede: '', ssid: '', desde: null, hasta: null, estado: 'abiertos', q: '' };
+  const view = { tab: 'resumen', sede: '', ssid: '', desde: null, hasta: null, estado: 'abiertos', prioridad: '', q: '' };
+  let anaTok = 0;
   let root = null, D = null, EXT = { resumen: [], acerca: [] };
   const lvl = (v) => (v === null ? '' : v >= X.META.objetivo ? 'good' : v >= X.META.inicial ? 'prog' : 'crit');
+  const PR_ORD = { alta: 0, media: 1, baja: 2 };
+  const prPill = (k) => h('span', { class: `pill pill-${X.PRIORIDAD[k].cls} fw-pill`, title: X.PRIORIDAD[k].hint }, X.PRIORIDAD[k].label);
   const estPill = (k) => h('span', { class: `pill pill-${X.ESTADO[k].cls} fw-pill` }, X.ESTADO[k].label);
 
   async function reload() {
@@ -123,9 +126,10 @@
       h('div', { class: 'cx-focus' },
         h('div', { class: 'cx-tiles cx-tiles-3' },
           tile('Dispositivos en investigación', nint(t.inv), `${p2(t.pctInv)} de los intentos`, 'fw-t-crit'),
-          tile('Casos registrados', nint(cs.length), t.inv ? `atención de ${nf(Math.min(100, (cs.length / t.inv) * 100), 0)}% del universo` : ''),
+          tile('Casos registrados', nint(cs.length), cs.length ? `${nf((cs.filter((c) => c.estado !== 'nuevo').length / cs.length) * 100, 0)}% con avance · ${cs.filter((c) => c.prioridad === 'alta' && X.ESTADO[c.estado].abierto).length} de prioridad alta abiertos` : ''),
           tile('Resueltos o descartados', nint(cs.filter((c) => !X.ESTADO[c.estado].abierto).length), `${cs.filter((c) => X.ESTADO[c.estado].abierto).length} siguen abiertos`, 'fw-t-good')),
         h('div', {}, h('h3', {}, 'Causas identificadas'), cr.length ? h('div', { class: 'mon-hbars' }, cr.map(([k, n]) => h('div', { class: 'mon-hrow' }, h('span', { class: 'mon-hlabel', title: k }, k), h('div', { class: 'mon-htrack' }, h('div', { class: 'fw-bar', style: `width:${(n / mx) * 100}%;background:#2a2b2e` })), h('span', { class: 'mon-hnum' }, n)))) : h('p', { class: 'muted' }, 'Aún no hay casos registrados en el periodo.')))));
+    out.push(detalleSection());
     out.push(EXT.resumen[1]);
     return out.filter(Boolean);
   }
@@ -137,7 +141,7 @@
     const can = canWrite();
     return [h('section', { class: 'panel' },
       h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, `Lecturas diarias (${nint(rows.length)})`), h('p', { class: 'muted' }, 'Un renglón por día, sede y SSID. Investigación = fallidos − ID Authentication 12303.')),
-        can ? h('div', { class: 'form-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => openExcel() }, 'Cargar Excel'), h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openCaptura() }, 'Capturar día')) : null),
+        can ? h('div', { class: 'form-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => openExcel() }, 'Cargar Excel'), h('button', { class: 'btn', type: 'button', onclick: () => openDetalle() }, 'Cargar reportes Abaton / ISE'), h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openCaptura() }, 'Capturar día')) : null),
       rows.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table fw-table' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Fecha'), h('th', {}, 'Sede'), h('th', {}, 'SSID'), h('th', { class: 'num-col' }, 'Dispositivos'), h('th', { class: 'num-col' }, 'Exitosos'), h('th', { class: 'num-col' }, '% exitosos'), h('th', { class: 'num-col' }, 'Fallidos'), h('th', { class: 'num-col' }, 'ID Auth. 12303'), h('th', { class: 'num-col' }, 'En investigación'), h('th', { class: 'no-print' }, ''))),
         h('tbody', {}, rows.map((r) => { const v = (r.exitosos / r.dispositivos) * 100; const inv = r.fallidos - r.auth12303; return h('tr', {},
@@ -145,11 +149,12 @@
           h('td', { class: `num-col cx-v cx-${lvl(v)}` }, p1(v)), h('td', { class: 'num-col plain' }, nint(r.fallidos)), h('td', { class: 'num-col plain' }, `${nint(r.auth12303)} (${p1((r.auth12303 / r.dispositivos) * 100)})`),
           h('td', { class: 'num-col plain' }, `${nint(inv)} (${p2((inv / r.dispositivos) * 100)})`),
           h('td', { class: 'actions no-print' }, can ? h('button', { class: 'link-btn', type: 'button', onclick: () => openCaptura(r) }, 'Corregir') : null, can && inv > 0 ? h('button', { class: 'link-btn', type: 'button', onclick: () => openCaso(null, r) }, 'Registrar caso') : null)); })))) : h('p', { class: 'empty' }, 'Sin lecturas en el periodo.')),
+    coberturaPanel(),
     h('section', { class: 'panel' }, h('h2', {}, 'Cargas de información'),
       D.cargas.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
         h('thead', {}, h('tr', {}, h('th', {}, 'Fecha y hora'), h('th', {}, 'Quién'), h('th', {}, 'Origen'), h('th', { class: 'num-col' }, 'Nuevas'), h('th', { class: 'num-col' }, 'Actualizadas'), h('th', { class: 'no-print' }, ''))),
         h('tbody', {}, D.cargas.map((c) => h('tr', {}, h('td', { class: 'nowrap' }, ddmm(c.ts)), h('td', {}, c.user || '—'),
-          h('td', {}, c.tipo === 'excel' ? 'Excel' : 'Captura manual', c.archivo ? h('span', { class: 'meta' }, c.archivo) : null, c.resumen.deshecha ? h('span', { class: 'meta warn-text' }, `Deshecha por ${c.resumen.deshecha.por}`) : null),
+          h('td', {}, ({ excel: 'Excel de lecturas', manual: 'Captura manual', abaton: `Abaton · ${sedeN(c.resumen.sede)} ${c.resumen.fecha ? dayMonth(c.resumen.fecha) : ''}`, ise: `ISE · ${sedeN(c.resumen.sede)} ${c.resumen.fecha ? dayMonth(c.resumen.fecha) : ''}` })[c.tipo] || c.tipo, c.archivo ? h('span', { class: 'meta' }, c.archivo) : null, c.resumen.deshecha ? h('span', { class: 'meta warn-text' }, `Deshecha por ${c.resumen.deshecha.por}`) : null),
           h('td', { class: 'num-col plain' }, c.resumen.nuevas ?? '—'), h('td', { class: 'num-col plain' }, c.resumen.actualizadas ?? '—'),
           h('td', { class: 'actions no-print' }, !c.resumen.deshecha && c.vigentes && (isAdmin() || (c.tipo === 'manual' && c.userId === state.user.id)) ? h('button', { class: 'link-btn', type: 'button', title: 'Borra las lecturas que siguen viniendo de esta carga',
             onclick: (e) => confirmInline(e.currentTarget, async () => { const x = await api('DELETE', `/api/conexiones/cargas/${c.id}`); toast(`Carga deshecha: ${x.lecturas} lecturas eliminadas`); refreshAll(); }) }, 'Deshacer') : null)))))) : h('p', { class: 'muted' }, 'Aún no hay cargas.'))];
@@ -160,27 +165,117 @@
     const rows = L(); const qn = X.plain(view.q);
     const base = casosScope();
     const list = base.filter((c) => (view.estado === 'todos' || (view.estado === 'abiertos' ? X.ESTADO[c.estado].abierto : view.estado === 'mios' ? c.ingenieroId === state.user.id && X.ESTADO[c.estado].abierto : c.estado === view.estado))
-      && (!qn || X.plain([c.username, c.nombre, c.dispositivo, c.ap, c.causa, c.comentario].join(' ')).includes(qn)));
-    const porSede = X.SEDES.map((s) => { const t = X.totales(rows.filter((r) => r.sede === s.key)); const cs = base.filter((c) => c.sede === s.key); return { s, inv: t.inv, n: cs.length, ab: cs.filter((c) => X.ESTADO[c.estado].abierto).length }; }).filter((x) => x.inv || x.n);
+      && (!view.prioridad || c.prioridad === view.prioridad)
+      && (!qn || X.plain([c.username, c.nombre, c.dispositivo, c.ap, c.causa, c.comentario].join(' ')).includes(qn)))
+      .sort((a, b) => (PR_ORD[a.prioridad] ?? 3) - (PR_ORD[b.prioridad] ?? 3) || b.fecha.localeCompare(a.fecha));
+    const porSede = X.SEDES.map((s) => { const t = X.totales(rows.filter((r) => r.sede === s.key)); const cs = base.filter((c) => c.sede === s.key); return { s, inv: t.inv, n: cs.length, ab: cs.filter((c) => X.ESTADO[c.estado].abierto).length, av: cs.filter((c) => c.estado !== 'nuevo').length, alta: cs.filter((c) => c.prioridad === 'alta' && X.ESTADO[c.estado].abierto).length }; }).filter((x) => x.inv || x.n);
+    const fp = (k, t) => h('button', { class: 'tab' + (view.prioridad === k ? ' is-active' : ''), type: 'button', onclick: () => { view.prioridad = k; render(); } }, t);
     const f = (k, t) => h('button', { class: 'tab' + (view.estado === k ? ' is-active' : ''), type: 'button', onclick: () => { view.estado = k; render(); } }, t);
-    return [h('section', { class: 'panel' }, h('h2', {}, 'Universo en investigación por sede'), h('p', { class: 'muted' }, 'Dispositivos con falla que no es ID Authentication 12303, contra los casos que ya se atienden en el portal.'),
-      porSede.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Sede'), h('th', { class: 'num-col' }, 'Dispositivos en investigación'), h('th', { class: 'num-col' }, 'Casos registrados'), h('th', { class: 'num-col' }, 'Abiertos'), h('th', {}, 'Atención del universo'))),
-        h('tbody', {}, porSede.map((x) => { const c = x.inv ? Math.min(100, (x.n / x.inv) * 100) : null; return h('tr', {}, h('td', {}, x.s.name), h('td', { class: 'num-col plain' }, nint(x.inv)), h('td', { class: 'num-col plain' }, nint(x.n)), h('td', { class: 'num-col plain' }, nint(x.ab)),
+    return [h('section', { class: 'panel' }, h('h2', {}, 'Universo en investigación por sede'), h('p', { class: 'muted' }, 'Dispositivos con falla que no es ID Authentication 12303 (suma diaria) y los casos que se atienden en el portal. Avance = casos que ya pasaron de «Por analizar».'),
+      porSede.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Sede'), h('th', { class: 'num-col' }, 'En investigación (suma diaria)'), h('th', { class: 'num-col' }, 'Casos'), h('th', { class: 'num-col' }, 'Abiertos'), h('th', { class: 'num-col' }, 'Prioridad alta abiertos'), h('th', {}, 'Avance de los casos'))),
+        h('tbody', {}, porSede.map((x) => { const c = x.n ? (x.av / x.n) * 100 : null; return h('tr', {}, h('td', {}, x.s.name), h('td', { class: 'num-col plain' }, nint(x.inv)), h('td', { class: 'num-col plain' }, nint(x.n)), h('td', { class: 'num-col plain' }, nint(x.ab)), h('td', { class: 'num-col plain' }, nint(x.alta)),
           h('td', {}, c === null ? '—' : h('div', { class: 'cx-meter' }, h('div', { class: 'cx-meter-bar' }, h('span', { style: `width:${c}%` })), h('span', {}, `${nf(c, 0)}%`)))); })))) : h('p', { class: 'empty' }, 'Sin dispositivos en investigación en el periodo.')),
     h('section', { class: 'panel' },
-      h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, `Casos (${nint(list.length)})`), h('div', { class: 'tabs' }, f('abiertos', 'Abiertos'), f('mios', 'Mis casos'), f('todos', 'Todos'), ...['resuelto', 'externo'].map((k) => f(k, X.ESTADO[k].label)))),
+      h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, `Casos (${nint(list.length)})`), h('div', { class: 'tabs' }, f('abiertos', 'Abiertos'), f('mios', 'Mis casos'), f('todos', 'Todos'), ...['resuelto', 'externo'].map((k) => f(k, X.ESTADO[k].label))), h('div', { class: 'tabs cx-prio-tabs' }, h('span', { class: 'label' }, 'Prioridad'), fp('', 'Todas'), ...X.PRIORIDADES.map((x) => fp(x.key, x.label)))),
         h('div', { class: 'mon-tools no-print' }, h('input', { type: 'search', placeholder: 'Buscar usuario, MAC, AP o causa', value: view.q, 'aria-label': 'Buscar caso', oninput: (e) => { view.q = e.target.value; clearTimeout(view.t); view.t = setTimeout(() => { render(); const i = root.querySelector('.mon-tools input'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); } }),
           canWrite() ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openCaso() }, 'Registrar caso') : null)),
       list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table fw-table' },
-        h('thead', {}, h('tr', {}, h('th', {}, 'Fecha'), h('th', {}, 'Usuario'), h('th', {}, 'Dispositivo'), h('th', {}, 'Causa'), h('th', {}, 'Estado'), h('th', {}, 'Último comentario'), h('th', { class: 'no-print' }, ''))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Fecha'), h('th', {}, 'Usuario'), h('th', {}, 'Dispositivo'), h('th', {}, 'Prioridad'), h('th', {}, 'Causa'), h('th', {}, 'Estado'), h('th', {}, 'Último comentario'), h('th', { class: 'no-print' }, ''))),
         h('tbody', {}, list.map((c) => h('tr', {},
           h('td', { class: 'nowrap' }, dayMonth(c.fecha), h('span', { class: 'meta' }, sedeN(c.sede))),
           h('td', {}, h('strong', {}, c.nombre || 'Sin nombre'), h('span', { class: 'meta' }, c.username || '—')),
           h('td', {}, h('span', { class: 'mono' }, c.dispositivo || '—'), h('span', { class: 'meta' }, [c.ssid, c.ap].filter(Boolean).join(' · '))),
-          h('td', {}, c.causa || h('span', { class: 'muted' }, 'Por determinar'), c.codigo ? h('span', { class: 'meta' }, `Código ${c.codigo}`) : null),
+          h('td', {}, c.prioridad ? prPill(c.prioridad) : h('span', { class: 'muted' }, '—'), c.dias ? h('span', { class: 'meta' }, `${c.dias} ${c.dias === 1 ? 'día' : 'días'} · ${nint(c.fallos)} ${c.fallos === 1 ? 'fallo' : 'fallos'}`) : null),
+          h('td', {}, c.causa || h('span', { class: 'muted' }, 'Por determinar'), c.codigo ? h('span', { class: 'meta' }, `ISE ${c.codigo}`) : null),
           h('td', {}, estPill(c.estado), h('span', { class: 'meta' }, c.ingeniero ? `Atiende: ${c.ingeniero}` : 'Sin asignar')),
           h('td', { class: 'detail-col' }, h('span', { class: 'mon-clip2' }, c.comentario || h('span', { class: 'muted' }, 'Sin comentario'))),
           h('td', { class: 'actions no-print' }, h('button', { class: 'link-btn', type: 'button', onclick: () => openSeguimiento(c) }, canWrite() ? 'Seguimiento' : 'Ver'))))))) : h('p', { class: 'empty' }, 'No hay casos con este filtro.'))];
+  }
+
+  /* ---------- detalle Abaton / ISE ---------- */
+  function coberturaPanel() {
+    const keys = new Map();
+    const add = (sede, fecha) => { const k = `${fecha}|${sede}`; if (!keys.has(k)) keys.set(k, { sede, fecha }); return keys.get(k); };
+    D.lecturas.filter((r) => inRange(r.fecha) && (!view.sede || r.sede === view.sede)).forEach((r) => { const x = add(r.sede, r.fecha); x.f = (x.f || 0) + r.fallidos; x.a = (x.a || 0) + r.auth12303; });
+    (D.cobertura || []).filter((c) => inRange(c.fecha) && (!view.sede || c.sede === view.sede)).forEach((c) => { const x = add(c.sede, c.fecha); x[c.fuente] = c; });
+    const rows = [...keys.values()].sort((a, b) => b.fecha.localeCompare(a.fecha) || a.sede.localeCompare(b.sede));
+    if (!rows.some((r) => r.abaton || r.ise)) return h('section', { class: 'panel' }, h('h2', {}, 'Reportes de detalle'), h('p', { class: 'muted' }, 'Aún no hay reportes de Abaton (equipos sin conexión) ni de ISE cargados en el periodo. Con ellos el portal valida las cifras diarias, crea los casos del universo en investigación y analiza códigos, pisos y AP.'));
+    const ok = (r) => (r.abaton && r.f !== undefined ? (r.abaton.n === r.f && r.abaton.a12303 === r.a ? h('span', { class: 'ok-text' }, '✓ Cuadra') : h('span', { class: 'warn-text' }, `No cuadra (${r.abaton.n}/${r.abaton.a12303} vs ${r.f}/${r.a})`)) : h('span', { class: 'muted' }, '—'));
+    return h('section', { class: 'panel' }, h('h2', {}, 'Reportes de detalle por día'), h('p', { class: 'muted' }, 'Abaton = dispositivos con falla (y cuántos son 12303); se compara contra los fallidos y 12303 de la lectura diaria. ISE = eventos de autenticación fallida.'),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Fecha'), h('th', {}, 'Sede'), h('th', { class: 'num-col' }, 'Lectura: fallidos / 12303'), h('th', { class: 'num-col' }, 'Abaton: dispositivos / 12303'), h('th', {}, 'Validación'), h('th', { class: 'num-col' }, 'ISE: eventos'))),
+        h('tbody', {}, rows.map((r) => h('tr', {}, h('td', { class: 'nowrap' }, fullDate(r.fecha)), h('td', {}, sedeN(r.sede)),
+          h('td', { class: 'num-col plain' }, r.f !== undefined ? `${nint(r.f)} / ${nint(r.a)}` : '—'), h('td', { class: 'num-col plain' }, r.abaton ? `${nint(r.abaton.n)} / ${nint(r.abaton.a12303)}` : '—'), h('td', {}, ok(r)),
+          h('td', { class: 'num-col plain' }, r.ise ? nint(r.ise.n) : '—')))))));
+  }
+
+  function detalleSection() {
+    const box = h('section', { class: 'panel mon-level cx-detalle' }, h('p', { class: 'mon-eyebrow' }, 'Análisis de detalle · Abaton e ISE'), h('p', { class: 'loading' }, 'Cargando el análisis…'));
+    const tok = ++anaTok;
+    const qs = new URLSearchParams(); if (view.desde) qs.set('desde', view.desde); if (view.hasta) qs.set('hasta', view.hasta); if (view.sede) qs.set('sede', view.sede);
+    api('GET', '/api/conexiones/analisis?' + qs).then((A) => { if (tok === anaTok) fillDetalle(box, A); }).catch((e) => { box.querySelector('.loading').textContent = e.message; });
+    return box;
+  }
+  function fillDetalle(box, A) {
+    box.textContent = '';
+    box.append(h('p', { class: 'mon-eyebrow' }, 'Análisis de detalle · Abaton e ISE'));
+    if (!A.dias && !A.diasIse) { box.append(h('p', { class: 'muted' }, 'Sin reportes de detalle en el periodo. Cárgalos en Registro diario → «Cargar reportes Abaton / ISE».')); return; }
+    const sum = (f) => A.disp.filter(f).reduce((a, x) => a + x.n, 0);
+    const d12 = sum((x) => x.tipo === '12303'), dInv = sum((x) => x.tipo === 'investigacion'), dRec = sum((x) => x.tipo === 'investigacion' && x.recuperado);
+    const cats = X.CATEGORIAS.map((c) => ({ k: c.label, n: sum((x) => x.categoria === c.key), hint: c.hint })).filter((c) => c.n);
+    const rec = (t) => A.rec.find((x) => x.tipo === t) || { macs: 0, multi: 0 };
+    const bars = (rows, color) => { const mx = Math.max(1, ...rows.map((r) => r.n)); return h('div', { class: 'mon-hbars' }, rows.map((r) => h('div', { class: 'mon-hrow' }, h('span', { class: 'mon-hlabel', title: r.hint || r.k }, r.k), h('div', { class: 'mon-htrack' }, h('div', { class: 'fw-bar', style: `width:${(r.n / mx) * 100}%;background:${color}` })), h('span', { class: 'mon-hnum' }, nint(r.n))))); };
+    const cs = casosScope().filter((c) => c.origen === 'abaton');
+    box.append(
+      h('div', { class: 'cx-tiles' },
+        tile('Dispositivos con falla (Abaton)', nint(d12 + dInv), `${A.dias} días-sede con detalle`),
+        tile('ID Authentication 12303', nint(d12), `${nint(rec('12303').macs)} equipos distintos · ${nint(rec('12303').multi)} fallan 2 días o más`, 'fw-t-warn'),
+        tile('En investigación', nint(dInv), `${nint(rec('investigacion').macs)} equipos distintos · ${nint(rec('investigacion').multi)} repiten`, 'fw-t-crit'),
+        tile('Se recuperaron solos', nint(dRec), `${dInv ? nf((dRec / dInv) * 100, 0) : 0}% del universo: se conectaron después del último fallo`, 'fw-t-good')),
+      h('div', { class: 'fw-grid4' },
+        h('div', {}, h('h3', {}, 'Universo en investigación por causa'), cats.length ? bars(cats, COLOR.inv) : h('p', { class: 'muted' }, 'Sin dispositivos en investigación.')),
+        h('div', {}, h('h3', {}, 'Casos por prioridad'), cs.length ? bars(X.PRIORIDADES.map((p) => ({ k: `${p.label} · ${p.hint.split(':')[0].split(',')[0]}`, n: cs.filter((c) => c.prioridad === p.key).length, hint: p.hint })), '#2a2b2e') : h('p', { class: 'muted' }, 'Sin casos creados desde Abaton.')),
+        A.codigos.length ? h('div', {}, h('h3', {}, 'ISE: fallas por código (eventos)'), h('div', { class: 'table-wrap' }, h('table', { class: 'table cx-codes' }, h('thead', {}, h('tr', {}, h('th', {}, 'Código'), h('th', { class: 'num-col' }, 'Eventos'), h('th', { class: 'num-col' }, 'Equipos-día'))),
+          h('tbody', {}, A.codigos.slice(0, 8).map((c) => h('tr', {}, h('td', {}, h('strong', {}, c.codigo), h('span', { class: 'meta' }, X.ISE[c.codigo] || '')), h('td', { class: 'num-col plain' }, nint(c.eventos)), h('td', { class: 'num-col plain' }, nint(c.dispositivos)))))))) : null,
+        A.pisos.length ? h('div', {}, h('h3', {}, 'ISE: pisos con más fallas'), bars(A.pisos.map((p) => ({ k: `${view.sede ? '' : sedeN(p.sede) + ' · '}${p.piso || 'Sin piso'}`, n: p.eventos, hint: `${p.dispositivos} equipos-AP, ${p.d12303} con 12303` })), COLOR.auth),
+          A.aps.length ? h('p', { class: 'meta' }, 'AP con más eventos: ', A.aps.slice(0, 4).map((a) => `${a.ap} (${nint(a.eventos)})`).join(', ')) : null) : null),
+      h('p', { class: 'muted' }, 'Lectura: 12303 = el equipo intenta usuario y contraseña (PEAP) donde la red exige certificado; suelen ser equipos personales o sin perfil corporativo. El universo en investigación son las demás fallas; los que se recuperaron solos tienen prioridad baja.'));
+  }
+
+  function openDetalle() {
+    const input = ctl('input', { type: 'file', accept: '.xlsx', multiple: true }); const out = h('div', {}); let revisados = [];
+    const send = async (file, modo) => {
+      const res = await fetch(`/api/conexiones/detalle?modo=${modo}&nombre=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'X-Requested-With': 'portal', 'Content-Type': 'application/octet-stream' }, body: file });
+      const r = await res.json().catch(() => ({})); if (!res.ok) throw new Error(r.error || 'No se pudo leer el archivo.'); return r;
+    };
+    const preview = async (btn) => {
+      const files = [...input.files].filter((f) => !f.name.startsWith('~$') && !f.name.startsWith('._'));
+      if (!files.length) { toast('Selecciona uno o varios archivos .xlsx.', 'error'); return; }
+      btn.disabled = true; out.textContent = ''; out.append(h('p', { class: 'loading' }, `Revisando ${files.length} archivos…`)); revisados = [];
+      for (const f of files) { try { revisados.push({ f, r: await send(f, 'vista') }); } catch (e) { revisados.push({ f, r: { errores: [e.message] } }); } }
+      btn.disabled = false; drawPreview();
+    };
+    const drawPreview = () => {
+      out.textContent = '';
+      const okN = revisados.filter((x) => !x.r.errores.length).length;
+      out.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Archivo'), h('th', {}, 'Tipo · sede · día'), h('th', {}, 'Contenido'), h('th', {}, 'Revisión'))),
+        h('tbody', {}, revisados.map(({ f, r }) => h('tr', {}, h('td', {}, f.name),
+          h('td', {}, r.tipo ? `${r.tipo === 'abaton' ? 'Abaton' : 'ISE'} · ${sedeN(r.sede)} · ${r.fecha ? dayMonth(r.fecha) : '—'}` : '—'),
+          h('td', {}, r.tipo === 'abaton' ? `${nint(r.dispositivos)} dispositivos: ${nint(r.a12303)} de 12303 y ${nint(r.investigacion)} en investigación (${nint(r.recuperados)} se recuperaron). Casos: ${r.casosNuevos} nuevos, ${r.casosActualizados} actualizados.`
+            : r.tipo === 'ise' ? `${nint(r.eventos)} eventos de ${nint(r.dispositivos)} equipos; ${Object.entries(r.codigos || {}).sort((a, b) => b[1].eventos - a[1].eventos).slice(0, 3).map(([k, v]) => `${k}: ${nint(v.eventos)}`).join(', ')}` : ''),
+          h('td', {}, r.errores.length ? h('span', { class: 'warn-text' }, r.errores.join(' ')) : r.avisos.length ? h('span', { class: 'meta' }, r.avisos.join(' ')) : h('span', { class: 'ok-text' }, r.lectura ? '✓ Cuadra con la lectura diaria' : '✓ Listo'))))))),
+      h('div', { class: 'mon-dfoot' }, h('button', { class: 'btn btn-primary', type: 'button', disabled: !okN, onclick: async (e) => {
+        e.currentTarget.disabled = true; let n = 0; const errs = [];
+        for (const { f, r } of revisados) { if (r.errores.length) continue; try { await send(f, 'guardar'); n += 1; } catch (x) { errs.push(`${f.name}: ${x.message}`); } }
+        if (errs.length) toast(errs.join(' · '), 'error');
+        view.tab = 'registro'; saved(`Se cargaron ${n} reportes de detalle`);
+      } }, `Guardar ${okN} ${okN === 1 ? 'archivo' : 'archivos'}`)));
+    };
+    openDrawer('Cargar reportes Abaton / ISE', h('div', {},
+      h('p', { class: 'muted' }, 'Selecciona uno o varios archivos a la vez (puedes elegir todos los de la semana). El portal reconoce el tipo de cada uno:'),
+      h('ul', { class: 'muted' }, h('li', {}, 'Abaton, equipos sin conexión (Polanco_26102026.xlsx): un renglón por dispositivo con falla. Valida las cifras del día, separa 12303 del universo en investigación y crea o actualiza un caso por dispositivo.'),
+        h('li', {}, 'ISE, RADIUS Authentications (REPORTE_ISE_26_Octubre_Polanco.xlsx): un renglón por evento fallido. Se resume por código, piso y AP.')),
+      h('p', { class: 'muted' }, 'La sede y el día salen de los datos y del nombre del archivo. Si vuelves a cargar el mismo día y sede, se reemplaza su detalle; los casos y su seguimiento se conservan.'),
+      field('Archivos .xlsx', input), h('div', { class: 'mon-dfoot' }, h('button', { class: 'btn', type: 'button', onclick: (e) => preview(e.currentTarget) }, 'Revisar archivos')), out), true);
   }
 
   /* =================== panel lateral =================== */
@@ -294,7 +389,11 @@
     const del = isAdmin() || c.createdBy === state.user.id ? h('button', { class: 'link-btn danger-text', type: 'button', onclick: (e) => confirmInline(e.currentTarget, async () => { await api('DELETE', `/api/conexiones/casos/${c.id}`); saved('Caso eliminado'); }) }, 'Eliminar caso') : null;
     openDrawer(c.nombre || c.username || c.dispositivo || 'Caso', h('div', {},
       h('div', { class: 'mon-fsum' }, estPill(c.estado), h('span', { class: 'muted' }, `${fullDate(c.fecha)} · ${sedeN(c.sede)}`)),
-      h('dl', { class: 'mon-dl' }, [['Username', c.username], ['MAC o equipo', c.dispositivo], ['SSID', c.ssid], ['AP', c.ap], ['Código', c.codigo], ['Atiende', c.ingeniero || 'Sin asignar'], ['Último comentario', c.comentario]].filter(([, v]) => v).map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
+      c.prioridad ? h('p', { class: 'meta' }, prPill(c.prioridad), ' ', X.PRIORIDAD[c.prioridad].hint) : null,
+      h('dl', { class: 'mon-dl' }, [['Username', c.username], ['MAC o equipo', c.dispositivo], ['SSID', c.ssid], ['AP', c.ap], ['Código ISE', c.codigo ? `${c.codigo}${X.ISE[c.codigo] ? ' · ' + X.ISE[c.codigo] : ''}` : null],
+        ['Días con falla', c.detalle && c.detalle.dias ? c.detalle.dias.map((d) => dayMonth(d)).join(', ') + ` (${nint(c.fallos)} ${c.fallos === 1 ? 'fallo' : 'fallos'})` : null], ['Tipos de falla', c.detalle && c.detalle.tipos], ['Motivo', c.detalle && c.detalle.motivo],
+        ['Equipo', c.detalle ? [c.detalle.equipo, c.detalle.fabricante, c.detalle.so].filter(Boolean).join(' · ') : null], ['Identidad RADIUS', c.detalle && c.detalle.identidad],
+        ['Última conexión exitosa', c.detalle && c.detalle.ultimaOk ? ddmm(c.detalle.ultimaOk + ':00') : null], ['AP con fallos', c.detalle && c.detalle.aps], ['Atiende', c.ingeniero || 'Sin asignar'], ['Último comentario', c.comentario]].filter(([, v]) => v).map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
       canWrite() ? h('fieldset', { class: 'mon-fs' }, h('legend', {}, 'Actualizar seguimiento'), field('Nuevo estado', est), field('Comentario', nota, null, true),
         field('Causa', causa, h('datalist', { id: 'cx-dl-causas2' }, X.CAUSAS.map((x) => h('option', { value: x }))), true), field('Siguiente acción', accion, null, true), ing ? field('Ingeniero', ing) : null, err,
         h('div', { class: 'mon-dfoot' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => save(e.currentTarget) }, 'Guardar seguimiento'), tomar, del)) : null,
@@ -317,6 +416,6 @@
       el.textContent = ''; el.append(h('p', { class: 'loading' }, 'Cargando el monitoreo 2.0…'));
       try { await reload(); } catch (err) { el.textContent = ''; el.append(h('p', { class: 'empty' }, err.message)); }
     },
-    nuevo(kind) { if (!D) return; if (kind === 'excel') openExcel(); else if (kind === 'caso') openCaso(); else openCaptura(); },
+    nuevo(kind) { if (!D) return; if (kind === 'excel') openExcel(); else if (kind === 'detalle') openDetalle(); else if (kind === 'caso') openCaso(); else openCaptura(); },
   };
 })();

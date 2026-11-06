@@ -29,7 +29,29 @@ module.exports = function init(ctx) {
       id INTEGER PRIMARY KEY, caso_id INTEGER NOT NULL REFERENCES cx_casos(id) ON DELETE CASCADE, ts TEXT NOT NULL,
       user_id INTEGER REFERENCES users(id), estado TEXT, nota TEXT
     );
+    CREATE TABLE IF NOT EXISTS cx_dispositivos (
+      id INTEGER PRIMARY KEY, sede TEXT NOT NULL, fecha TEXT NOT NULL, mac TEXT NOT NULL, tipo TEXT NOT NULL, codigo TEXT, log_ise TEXT, categoria TEXT,
+      identidad TEXT, usuario TEXT, equipo TEXT, fabricante TEXT, so TEXT, fallos INTEGER, tipos TEXT, motivo TEXT, aps TEXT, primer TEXT, ultimo TEXT, ultima_ok TEXT,
+      recuperado INTEGER NOT NULL DEFAULT 0, carga_id INTEGER REFERENCES cx_cargas(id), UNIQUE (sede, fecha, mac)
+    );
+    CREATE INDEX IF NOT EXISTS cx_dispositivos_fecha ON cx_dispositivos(fecha);
+    CREATE TABLE IF NOT EXISTS cx_ise_codigo (
+      id INTEGER PRIMARY KEY, sede TEXT NOT NULL, fecha TEXT NOT NULL, codigo TEXT NOT NULL, eventos INTEGER NOT NULL, macs INTEGER NOT NULL, carga_id INTEGER REFERENCES cx_cargas(id),
+      UNIQUE (sede, fecha, codigo)
+    );
+    CREATE TABLE IF NOT EXISTS cx_ise_lugar (
+      id INTEGER PRIMARY KEY, sede TEXT NOT NULL, fecha TEXT NOT NULL, piso TEXT, ap TEXT, eventos INTEGER NOT NULL, macs INTEGER NOT NULL, macs12303 INTEGER NOT NULL,
+      carga_id INTEGER REFERENCES cx_cargas(id)
+    );
+    CREATE INDEX IF NOT EXISTS cx_ise_lugar_fecha ON cx_ise_lugar(sede, fecha);
   `);
+  // v3.25: datos de detalle en los casos (origen Abaton, prioridad, días y fallos)
+  {
+    const cols = db.prepare('PRAGMA table_info(cx_casos)').all().map((c) => c.name);
+    for (const [c, t] of [['origen', 'TEXT'], ['prioridad', 'TEXT'], ['categoria', 'TEXT'], ['dias', 'INTEGER'], ['fallos', 'INTEGER'], ['ultimo', 'TEXT'], ['detalle', 'TEXT']]) {
+      if (!cols.includes(c)) db.exec(`ALTER TABLE cx_casos ADD COLUMN ${c} ${t}`);
+    }
+  }
 
   /** Crea la iniciativa si no existe y deja el orden pedido: esta primero y Monitoreo (1.0) al final. */
   function ensure() {
@@ -162,16 +184,190 @@ module.exports = function init(ctx) {
     return out;
   }
 
+  /* ---------- reportes de detalle: Abaton (equipos sin conexión) e ISE (RADIUS Authentications) ---------- */
+  const MESES = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
+  const MON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+  const pad = (n) => String(n).padStart(2, '0');
+  /** Fecha del archivo: Polanco_26102026, equipos_sin_conexion_2026-10-280300, REPORTE_ISE_25-26_Octubre_Reforma (el último día). */
+  function fechaArchivo(nombre, anioDefault) {
+    const n = String(nombre || '');
+    let m = n.match(/(20\d{2})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = n.match(/(?:^|[^\d])(\d{2})(\d{2})(20\d{2})(?:[^\d]|$)/); if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    m = n.match(/(\d{1,2})(?:-(\d{1,2}))?[_ -]+([A-Za-zé]+)/);
+    if (m && MESES[C.plain(m[3])]) return `${anioDefault}-${pad(MESES[C.plain(m[3])])}-${pad(m[2] || m[1])}`;
+    return null;
+  }
+  const num = (v) => { const n = Number(String(v ?? '').replace(/[^\d.-]/g, '')); return Number.isFinite(n) ? n : 0; };
+  const sinConteo = (v) => (v === undefined || v === null ? null : String(v).replace(/\s*\(\d+\)\s*$/, '').trim() || null);
+  /** "26/10/2026, 9:05:00 a.m." → "2026-10-26T09:05" */
+  function fechaHora(v) {
+    const m = String(v || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([ap])?\.?\s*m?\.?/i);
+    if (!m) return null;
+    let hh = Number(m[4]); if (m[6]) hh = (hh % 12) + (/p/i.test(m[6]) ? 12 : 0);
+    return `${m[3]}-${pad(m[2])}-${pad(m[1])}T${pad(hh)}:${m[5]}`;
+  }
+  /** Fecha de un evento de ISE: "26-OCT-26 08.57.44.995000 PM". */
+  function fechaIse(v) { const m = String(v || '').match(/^(\d{2})-([A-Z]{3})-(\d{2})/i); return m && MON[m[2].toUpperCase()] ? `20${m[3]}-${pad(MON[m[2].toUpperCase()])}-${m[1]}` : null; }
+
+  function parseDetalle(buf, nombre) {
+    const { sheets } = readXlsx(buf);
+    const anio = String(new Date().getFullYear());
+    for (const sh of sheets) {
+      const get = (r, c) => { const x = sh.cells.get(`${r},${c}`); return x ? x.v : undefined; };
+      for (let hr = 1; hr <= 3; hr++) {
+        const head = []; for (let c = 1; c <= Math.min(sh.maxCol, 40); c++) head.push(String(get(hr, c) ?? '').trim());
+        const ix = (name) => { const i = head.findIndex((x) => C.plain(x) === C.plain(name)); return i < 0 ? null : i + 1; };
+        // Abaton: equipos sin conexión, un renglón por dispositivo
+        if (ix('MAC') && ix('Log ISE') && ix('Fallos')) {
+          const fecha = fechaArchivo(nombre, anio) || fechaArchivo(get(1, 1), anio) || fechaArchivo(sh.name, anio);
+          const filas = [];
+          for (let r = hr + 1; r <= sh.maxRow; r++) {
+            const mac = String(get(r, ix('MAC')) || '').trim().toLowerCase();
+            if (!/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac)) continue;
+            const log = String(get(r, ix('Log ISE')) || '').trim();
+            const codigo = C.codigoDe(log);
+            const tipos = String(get(r, ix('Tipos de falla')) || '');
+            const ultimo = fechaHora(get(r, ix('Ultimo intento'))), ok = fechaHora(get(r, ix('Ultima conexion exitosa')));
+            filas.push({ sede: (C.sedeDe(get(r, ix('Sede'))) || C.sedeDe(nombre) || {}).key || null, mac, codigo, log_ise: log && log !== '#N/A' ? log.slice(0, 200) : null,
+              tipo: codigo === '12303' ? '12303' : 'investigacion', categoria: codigo === '12303' ? null : C.categoria(codigo, tipos),
+              identidad: sinConteo(get(r, ix('Identidad RADIUS'))), usuario: sinConteo(get(r, ix('Usuario'))), equipo: sinConteo(get(r, ix('Equipo'))), fabricante: sinConteo(get(r, ix('Fabricante'))), so: sinConteo(get(r, ix('Sistema operativo'))),
+              fallos: num(get(r, ix('Fallos'))), tipos: tipos.slice(0, 300) || null, motivo: String(get(r, ix('Motivo del rechazo')) || '').slice(0, 300) || null, aps: String(get(r, ix('APs')) || '').slice(0, 600) || null,
+              primer: fechaHora(get(r, ix('Primer intento'))), ultimo, ultima_ok: ok, recuperado: ok && ultimo && ok > ultimo ? 1 : 0 });
+          }
+          const sedes = [...new Set(filas.map((f) => f.sede).filter(Boolean))];
+          return { tipo: 'abaton', hoja: sh.name, fecha, sede: sedes.length === 1 ? sedes[0] : null, sedes, filas };
+        }
+        // ISE: RADIUS Authentications (fallas), un renglón por evento
+        if (ix('FAILURE_REASON') && ix('CALLING_STATION_ID') && ix('ACSVIEW_TIMESTAMP')) {
+          const cL = ix('LOCATION'), cAp = ix('NETWORK_DEVICE_NAME'), cF = ix('FAILURE_REASON'), cM = ix('CALLING_STATION_ID'), cT = ix('ACSVIEW_TIMESTAMP');
+          const ev = [];
+          for (let r = hr + 1; r <= sh.maxRow; r++) {
+            const fr = get(r, cF); if (!fr) continue;
+            const loc = String(get(r, cL) || '').split('#');
+            ev.push({ codigo: C.codigoDe(fr) || 'otro', mac: String(get(r, cM) || '').toLowerCase().replace(/-/g, ':'), sedeTxt: loc[1] || '', piso: loc[2] || null, ap: String(get(r, cAp) || '') || null, dia: fechaIse(get(r, cT)) });
+          }
+          const cnt = new Map(); ev.forEach((e) => e.dia && cnt.set(e.dia, (cnt.get(e.dia) || 0) + 1));
+          const fecha = fechaArchivo(nombre, anio) || [...cnt.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+          const sedes = [...new Set(ev.map((e) => (C.sedeDe(e.sedeTxt) || {}).key).filter(Boolean))];
+          const sede = sedes.length === 1 ? sedes[0] : (C.sedeDe(nombre) || {}).key || null;
+          return { tipo: 'ise', hoja: sh.name, fecha, sede, sedes, eventos: ev };
+        }
+      }
+    }
+    return { tipo: null };
+  }
+
+  /** Revisa (y si commit, guarda) un reporte de detalle. Abaton reemplaza el detalle de esa sede y día; ISE igual. */
+  function aplicarDetalle(rep, user, archivo, commit) {
+    const out = { tipo: rep.tipo, archivo, sede: rep.sede, fecha: rep.fecha, avisos: [], errores: [] };
+    if (!rep.tipo) { out.errores.push('No se reconoce el formato: se esperaba el reporte de equipos sin conexión (Abaton) o el de RADIUS Authentications de ISE.'); return out; }
+    if (!rep.sede) out.errores.push(rep.sedes && rep.sedes.length > 1 ? `El archivo trae varias sedes (${rep.sedes.join(', ')}); carga un archivo por sede.` : 'No se pudo identificar la sede (ni en los datos ni en el nombre del archivo).');
+    if (!rep.fecha) out.errores.push('No se pudo identificar la fecha (usa el nombre original del archivo, por ejemplo Polanco_26102026 o REPORTE_ISE_26_Octubre_Polanco).');
+    else if (rep.fecha > today()) out.errores.push(`La fecha ${rep.fecha} es futura.`);
+    if (out.errores.length) return out;
+    const ts = now();
+    if (rep.tipo === 'abaton') {
+      const filas = rep.filas.map((f) => ({ ...f, sede: rep.sede }));
+      const inv = filas.filter((f) => f.tipo === 'investigacion');
+      Object.assign(out, { dispositivos: filas.length, a12303: filas.length - inv.length, investigacion: inv.length, recuperados: inv.filter((f) => f.recuperado).length,
+        categorias: Object.fromEntries(C.CATEGORIAS.map((c) => [c.key, inv.filter((f) => f.categoria === c.key).length])) });
+      const lect = db.prepare("SELECT SUM(fallidos) AS f, SUM(auth12303) AS a FROM cx_lecturas WHERE sede = ? AND fecha = ?").get(rep.sede, rep.fecha);
+      out.lectura = lect && lect.f !== null ? { fallidos: lect.f, a12303: lect.a } : null;
+      if (!out.lectura) out.avisos.push('Aún no hay lectura diaria (totales) de esa sede y día: el detalle se guarda, pero el % de exitosas necesita el total de dispositivos.');
+      else if (lect.f !== filas.length || lect.a !== out.a12303) out.avisos.push(`No cuadra con la lectura diaria: lectura ${lect.f} fallidos y ${lect.a} de 12303; el reporte trae ${filas.length} y ${out.a12303}.`);
+      // casos: uno por sede y MAC del universo en investigación
+      const prevCase = db.prepare('SELECT * FROM cx_casos WHERE sede = ? AND lower(dispositivo) = ?');
+      let nuevos = 0, act = 0;
+      const planCasos = inv.map((f) => { const c = prevCase.get(rep.sede, f.mac); if (c) act += 1; else nuevos += 1; return { f, c }; });
+      Object.assign(out, { casosNuevos: nuevos, casosActualizados: act });
+      if (!commit) return out;
+      db.exec('BEGIN');
+      try {
+        const carga = Number(db.prepare('INSERT INTO cx_cargas (ts, user_id, tipo, archivo, resumen) VALUES (?,?,?,?,?)').run(ts, user.id, 'abaton', archivo, JSON.stringify({ sede: rep.sede, fecha: rep.fecha, dispositivos: filas.length, investigacion: inv.length, casosNuevos: nuevos })).lastInsertRowid);
+        db.prepare('DELETE FROM cx_dispositivos WHERE sede = ? AND fecha = ?').run(rep.sede, rep.fecha);
+        const ins = db.prepare(`INSERT INTO cx_dispositivos (sede, fecha, mac, tipo, codigo, log_ise, categoria, identidad, usuario, equipo, fabricante, so, fallos, tipos, motivo, aps, primer, ultimo, ultima_ok, recuperado, carga_id)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(sede, fecha, mac) DO NOTHING`);
+        for (const f of filas) ins.run(rep.sede, rep.fecha, f.mac, f.tipo, f.codigo, f.log_ise, f.categoria, f.identidad, f.usuario, f.equipo, f.fabricante, f.so, f.fallos, f.tipos, f.motivo, f.aps, f.primer, f.ultimo, f.ultima_ok, f.recuperado, carga);
+        for (const { f, c } of planCasos) {
+          // historial del dispositivo con todos los días cargados
+          const dias = db.prepare("SELECT fecha, fallos, recuperado, codigo, categoria, ultimo FROM cx_dispositivos WHERE sede = ? AND mac = ? AND tipo = 'investigacion' ORDER BY fecha").all(rep.sede, f.mac);
+          const last = dias[dias.length - 1];
+          const fallos = dias.reduce((a, d) => a + (d.fallos || 0), 0);
+          const pr = C.prioridad({ recuperado: !!last.recuperado, dias: dias.length, fallos, codigo: last.codigo });
+          const ident = f.identidad && !/anonymous/i.test(f.identidad) ? f.identidad : null;
+          const det = JSON.stringify({ log: f.log_ise, tipos: f.tipos, motivo: f.motivo, fabricante: f.fabricante, so: f.so, equipo: f.equipo, identidad: f.identidad, aps: f.aps, ultimaOk: f.ultima_ok, recuperado: !!last.recuperado, dias: dias.map((d) => d.fecha) });
+          const ap = f.aps ? f.aps.split(';')[0].replace(/\s*\(\d+\)\s*$/, '').trim().slice(0, 60) : null;
+          if (!c) {
+            const id = Number(db.prepare(`INSERT INTO cx_casos (sede, fecha, ssid, username, nombre, dispositivo, ap, causa, codigo, estado, accion, comentario, ingeniero_id, created_by, created_at, updated_by, updated_at, origen, prioridad, categoria, dias, fallos, ultimo, detalle)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(rep.sede, dias[0].fecha, 'BBVA_GLOBAL', ident ? ident.toUpperCase().slice(0, 60) : null, f.usuario, f.mac, ap, C.CATEGORIA[f.categoria].label, f.codigo, 'nuevo', null, null, null, user.id, ts, user.id, ts,
+              'abaton', pr, f.categoria, dias.length, fallos, last.ultimo, det).lastInsertRowid);
+            db.prepare('INSERT INTO cx_casos_hist (caso_id, ts, user_id, estado, nota) VALUES (?,?,?,?,?)').run(id, ts, user.id, 'nuevo', `Creado desde el reporte de equipos sin conexión (${archivo || rep.fecha}).`);
+          } else {
+            db.prepare('UPDATE cx_casos SET prioridad = ?, categoria = COALESCE(categoria, ?), dias = ?, fallos = ?, ultimo = ?, detalle = ?, origen = COALESCE(origen, ?), updated_at = ? WHERE id = ?')
+              .run(pr, f.categoria, dias.length, fallos, last.ultimo, det, 'abaton', ts, c.id);
+          }
+        }
+        db.exec('COMMIT');
+        out.carga = carga;
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+      audit(user.id, 'conexiones_detalle_abaton', { sede: rep.sede, fecha: rep.fecha, dispositivos: filas.length, casosNuevos: nuevos });
+      return out;
+    }
+    // ISE
+    const ev = rep.eventos;
+    const byCod = new Map(); const byLugar = new Map();
+    for (const e of ev) {
+      const a = byCod.get(e.codigo) || { eventos: 0, macs: new Set() }; a.eventos += 1; a.macs.add(e.mac); byCod.set(e.codigo, a);
+      const k = `${e.piso}|${e.ap}`; const b = byLugar.get(k) || { piso: e.piso, ap: e.ap, eventos: 0, macs: new Set(), m12: new Set() }; b.eventos += 1; b.macs.add(e.mac); if (e.codigo === '12303') b.m12.add(e.mac); byLugar.set(k, b);
+    }
+    Object.assign(out, { eventos: ev.length, dispositivos: new Set(ev.map((e) => e.mac)).size, codigos: Object.fromEntries([...byCod.entries()].map(([k, v]) => [k, { eventos: v.eventos, dispositivos: v.macs.size }])) });
+    const otros = [...new Set(ev.map((e) => e.dia).filter((d) => d && d !== rep.fecha))];
+    if (otros.length) out.avisos.push(`El reporte incluye eventos de ${[rep.fecha, ...otros].sort().join(' y ')} (corte de ISE a las 21:00); se cargan como del ${rep.fecha}.`);
+    if (!commit) return out;
+    db.exec('BEGIN');
+    try {
+      const carga = Number(db.prepare('INSERT INTO cx_cargas (ts, user_id, tipo, archivo, resumen) VALUES (?,?,?,?,?)').run(ts, user.id, 'ise', archivo, JSON.stringify({ sede: rep.sede, fecha: rep.fecha, eventos: ev.length })).lastInsertRowid);
+      db.prepare('DELETE FROM cx_ise_codigo WHERE sede = ? AND fecha = ?').run(rep.sede, rep.fecha);
+      db.prepare('DELETE FROM cx_ise_lugar WHERE sede = ? AND fecha = ?').run(rep.sede, rep.fecha);
+      const i1 = db.prepare('INSERT INTO cx_ise_codigo (sede, fecha, codigo, eventos, macs, carga_id) VALUES (?,?,?,?,?,?)');
+      for (const [k, v] of byCod) i1.run(rep.sede, rep.fecha, k, v.eventos, v.macs.size, carga);
+      const i2 = db.prepare('INSERT INTO cx_ise_lugar (sede, fecha, piso, ap, eventos, macs, macs12303, carga_id) VALUES (?,?,?,?,?,?,?,?)');
+      for (const v of byLugar.values()) i2.run(rep.sede, rep.fecha, v.piso, v.ap, v.eventos, v.macs.size, v.m12.size, carga);
+      db.exec('COMMIT');
+      out.carga = carga;
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    audit(user.id, 'conexiones_detalle_ise', { sede: rep.sede, fecha: rep.fecha, eventos: ev.length });
+    return out;
+  }
+
+  /** Análisis del detalle para el reporte ejecutivo (respeta periodo y sede). */
+  function analisis(q) {
+    const desde = isDate(q.get('desde')) ? q.get('desde') : '0000-01-01', hasta = isDate(q.get('hasta')) ? q.get('hasta') : '9999-12-31';
+    const sede = C.SEDE[q.get('sede')] ? q.get('sede') : null;
+    const w = `fecha BETWEEN ? AND ?${sede ? ' AND sede = ?' : ''}`; const args = sede ? [desde, hasta, sede] : [desde, hasta];
+    const disp = db.prepare(`SELECT tipo, categoria, recuperado, COUNT(*) AS n FROM cx_dispositivos WHERE ${w} GROUP BY tipo, categoria, recuperado`).all(...args);
+    const rec = db.prepare(`SELECT tipo, COUNT(*) AS macs, SUM(d >= 2) AS multi FROM (SELECT tipo, sede, mac, COUNT(DISTINCT fecha) AS d FROM cx_dispositivos WHERE ${w} GROUP BY tipo, sede, mac) GROUP BY tipo`).all(...args);
+    const codigos = db.prepare(`SELECT codigo, SUM(eventos) AS eventos, SUM(macs) AS dispositivos FROM cx_ise_codigo WHERE ${w} GROUP BY codigo ORDER BY eventos DESC`).all(...args);
+    const pisos = db.prepare(`SELECT sede, piso, SUM(eventos) AS eventos, SUM(macs) AS dispositivos, SUM(macs12303) AS d12303 FROM cx_ise_lugar WHERE ${w} GROUP BY sede, piso ORDER BY eventos DESC LIMIT 10`).all(...args);
+    const aps = db.prepare(`SELECT sede, ap, SUM(eventos) AS eventos, SUM(macs) AS dispositivos FROM cx_ise_lugar WHERE ${w} GROUP BY sede, ap ORDER BY eventos DESC LIMIT 8`).all(...args);
+    const dias = db.prepare(`SELECT COUNT(DISTINCT sede || fecha) AS n FROM cx_dispositivos WHERE ${w}`).get(...args).n;
+    const diasIse = db.prepare(`SELECT COUNT(DISTINCT sede || fecha) AS n FROM cx_ise_codigo WHERE ${w}`).get(...args).n;
+    return { disp, rec, codigos, pisos, aps, dias, diasIse };
+  }
+
   function datos() {
     const lect = db.prepare('SELECT id, sede, fecha, ssid, dispositivos, exitosos, fallidos, auth12303, carga_id AS cargaId FROM cx_lecturas ORDER BY fecha DESC, sede, ssid').all();
-    const cargas = db.prepare('SELECT c.id, c.ts, c.tipo, c.archivo, c.resumen, c.user_id AS userId, u.name AS user, (SELECT COUNT(*) FROM cx_lecturas l WHERE l.carga_id = c.id) AS vigentes FROM cx_cargas c LEFT JOIN users u ON u.id = c.user_id ORDER BY c.id DESC LIMIT 40').all()
+    const cargas = db.prepare('SELECT c.id, c.ts, c.tipo, c.archivo, c.resumen, c.user_id AS userId, u.name AS user, ((SELECT COUNT(*) FROM cx_lecturas l WHERE l.carga_id = c.id) + (SELECT COUNT(*) FROM cx_dispositivos d WHERE d.carga_id = c.id) + (SELECT COUNT(*) FROM cx_ise_codigo i WHERE i.carga_id = c.id)) AS vigentes FROM cx_cargas c LEFT JOIN users u ON u.id = c.user_id ORDER BY c.id DESC LIMIT 40').all()
       .map((c) => ({ ...c, resumen: JSON.parse(c.resumen || '{}') }));
     const hist = db.prepare('SELECT h.caso_id, h.ts, h.estado, h.nota, u.name AS user FROM cx_casos_hist h LEFT JOIN users u ON u.id = h.user_id ORDER BY h.id').all();
     const casos = db.prepare('SELECT c.*, i.name AS ingeniero FROM cx_casos c LEFT JOIN users i ON i.id = c.ingeniero_id ORDER BY c.fecha DESC, c.id DESC').all()
       .map((c) => ({ id: c.id, sede: c.sede, fecha: c.fecha, ssid: c.ssid, username: c.username, nombre: c.nombre, dispositivo: c.dispositivo, ap: c.ap, causa: c.causa, codigo: c.codigo,
         estado: c.estado, accion: c.accion, comentario: c.comentario, ingenieroId: c.ingeniero_id, ingeniero: c.ingeniero, createdBy: c.created_by, updatedAt: c.updated_at,
+        origen: c.origen, prioridad: c.prioridad, categoria: c.categoria, dias: c.dias, fallos: c.fallos, ultimo: c.ultimo, detalle: c.detalle ? JSON.parse(c.detalle) : null,
         historial: hist.filter((h) => h.caso_id === c.id).map((h) => ({ ts: h.ts, estado: h.estado, nota: h.nota, user: h.user || 'Sistema' })) }));
-    return { hoy: today(), lecturas: lect, cargas, casos, ingenieros: db.prepare("SELECT id, name FROM users WHERE role IN ('admin','ingeniero') AND active = 1 ORDER BY name").all() };
+    const cobertura = db.prepare(`SELECT sede, fecha, 'abaton' AS fuente, COUNT(*) AS n, SUM(tipo = '12303') AS a12303 FROM cx_dispositivos GROUP BY sede, fecha
+      UNION ALL SELECT sede, fecha, 'ise' AS fuente, SUM(eventos) AS n, SUM(CASE WHEN codigo = '12303' THEN eventos ELSE 0 END) AS a12303 FROM cx_ise_codigo GROUP BY sede, fecha`).all();
+    return { hoy: today(), lecturas: lect, cargas, casos, cobertura, ingenieros: db.prepare("SELECT id, name FROM users WHERE role IN ('admin','ingeniero') AND active = 1 ORDER BY name").all() };
   }
 
   function weeklySummary() {
@@ -235,11 +431,25 @@ module.exports = function init(ctx) {
       return send(res, 200, { ...r, hojas: parsed.hojas, avisos: parsed.avisos, errores: parsed.errores, guardado: commit }), true;
     }
 
+    if (p === '/api/conexiones/analisis' && m === 'GET') return send(res, 200, analisis(url.searchParams)), true;
+    if (p === '/api/conexiones/detalle' && m === 'POST') {
+      if (!canWrite(user)) throw new HttpError(403, 'Tu usuario es de consulta: no puede cargar información.');
+      const buf = await new Promise((resolve, reject) => { let size = 0; const ch = []; req.on('data', (c) => { size += c.length; if (size > 20 * 1024 * 1024) { reject(new HttpError(413, 'El archivo es demasiado grande (máximo 20 MB).')); req.destroy(); } else ch.push(c); }); req.on('end', () => resolve(Buffer.concat(ch))); req.on('error', reject); });
+      const nombre = txt(url.searchParams.get('nombre'), 160);
+      let rep; try { rep = parseDetalle(buf, nombre); } catch (e) { throw new HttpError(400, e.message || 'No se pudo leer el archivo.'); }
+      const commit = url.searchParams.get('modo') === 'guardar';
+      const r = aplicarDetalle(rep, user, nombre, commit);
+      if (commit && r.errores.length) throw new HttpError(400, r.errores[0]);
+      return send(res, 200, { ...r, guardado: commit && !r.errores.length }), true;
+    }
+
     if ((mm = p.match(/^\/api\/conexiones\/cargas\/(\d+)$/)) && m === 'DELETE') {
       const c = db.prepare('SELECT * FROM cx_cargas WHERE id = ?').get(Number(mm[1]));
       if (!c) throw new HttpError(404, 'La carga no existe.');
       if (!(user.role === 'admin' || (user.role === 'ingeniero' && c.user_id === user.id && c.tipo === 'manual'))) throw new HttpError(403, 'Solo un administrador puede deshacer cargas de Excel o de otras personas.');
       const r = db.prepare('DELETE FROM cx_lecturas WHERE carga_id = ?').run(c.id);
+      r.changes = Number(r.changes) + Number(db.prepare('DELETE FROM cx_dispositivos WHERE carga_id = ?').run(c.id).changes) + Number(db.prepare('DELETE FROM cx_ise_codigo WHERE carga_id = ?').run(c.id).changes);
+      db.prepare('DELETE FROM cx_ise_lugar WHERE carga_id = ?').run(c.id);
       const resumen = { ...JSON.parse(c.resumen || '{}'), deshecha: { por: user.name || user.username, ts: now(), lecturas: Number(r.changes) } };
       db.prepare('UPDATE cx_cargas SET resumen = ? WHERE id = ?').run(JSON.stringify(resumen), c.id);
       audit(user.id, 'conexiones_carga_deshecha', { carga: c.id, lecturas: Number(r.changes) });
