@@ -5,8 +5,8 @@ Portal web de Sipnology para dar seguimiento a las iniciativas de mejora NPS de 
 - **Inicio de sesión** con usuario y contraseña propios del portal.
 - **Tablero ejecutivo**: las 7 iniciativas con métrica inicial, actual y objetivo, estado y tendencia. Incluye modo presentación (pantalla completa, sin controles de edición).
 - **Detalle por iniciativa**: gráfica semanal contra el objetivo, valor al negocio, impacto esperado, hitos, bitácora de avances y metodología.
-- **Captura semanal** (mDNS, QoS y firmware): cada ingeniero registra las métricas de la semana con su detalle, sede y enlace de evidencia. Un registro por iniciativa por semana.
-- **Captura diaria o por caso**: Recorridos proactivos, Rediseño WLAN, Monitoreo proactivo y Encuestas se registran dentro de su iniciativa; su total semanal se calcula solo.
+- **Captura semanal** (mDNS y QoS): cada ingeniero registra las métricas de la semana con su detalle, sede y enlace de evidencia. Un registro por iniciativa por semana.
+- **Captura diaria o por caso**: Recorridos proactivos, Rediseño WLAN, Monitoreo proactivo, Encuestas y Debugging de firmware se registran dentro de su iniciativa; su total semanal se calcula solo.
 - **Usuarios y roles**: administrador, ingeniero (captura) y solo consulta.
 - **Exportación** de todos los avances a CSV.
 
@@ -52,6 +52,13 @@ Cada usuario o equipo revisado en Meraki es un caso (`mon_casos`, con su histori
 - El estado se propone a partir del comentario (`estadoDe` en `public/js/monitoreo-comun.js`, compartido con el servidor). Los usernames se comparan con los ya registrados para no duplicar personas.
 - **Importar histórico** (administrador): carga una sola vez el Excel de seguimiento anterior (una hoja por sede), con vista previa, corrección de fechas y sin duplicar.
 - Exportación: PDF del Resumen y CSV de casos.
+
+## Debugging periódico de firmware
+
+- **Análisis de firmware:** cada Known Issue de la versión objetivo se registra con su impacto (bajo 1, medio 2, alto 3 puntos; crítico bloquea) y si aplica a nuestros modelos. El portal recomienda *migrar*, *piloto* (un alto aplicable o 5 puntos o más) o *no migrar* (un crítico aplicable). Un administrador puede aprobar el resultado de un piloto.
+- **Actualizaciones:** asistente de 5 pasos (datos, antes, durante, después y resumen) con checklist, AP actualizados contra alcance, evidencia de conectividad (imagen o PDF, en `data/firmware/`) e impacto posterior. Requiere un análisis aprobado de la misma sede, modelo y firmware objetivo; sin él, solo un administrador registra una excepción justificada.
+- **Reportes de fallos:** tipo, subtipo, patrón, severidad, estado de investigación con historial, impacto y alcance. Con 4 reportes del mismo tipo y patrón en 30 días aparece una advertencia de posible bug. Cada actualización instalada queda 30 días en seguimiento.
+- Los indicadores de la iniciativa (defectos activos y % de fallas evaluadas) se calculan solos con los reportes. Catálogo de sedes propio en `public/js/firmware-comun.js`.
 
 ## Encuestas a usuarios finales
 
@@ -166,6 +173,7 @@ rediseno-formato.js  lectura del reporte de Excel de rediseño
 xlsx-lite.js         lector mínimo de archivos .xlsx (rediseño y monitoreo)
 monitoreo.js         monitoreo proactivo: casos, seguimiento, pendientes e importación
 encuestas.js         encuestas a usuarios finales y sus reportes
+firmware.js          debugging de firmware: análisis, actualizaciones, reportes de fallos y evidencias
 seed.js              definición inicial de iniciativas
 seed-rediseno.json   histórico inicial de rediseño
 crear-usuarios.js    alta masiva de usuarios desde CSV (npm run usuarios)

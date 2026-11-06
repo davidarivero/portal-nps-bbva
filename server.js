@@ -14,6 +14,7 @@ const initRecorridos = require('./recorridos');
 const initRediseno = require('./rediseno');
 const initEncuestas = require('./encuestas');
 const initMonitoreo = require('./monitoreo');
+const initFirmware = require('./firmware');
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -337,6 +338,19 @@ function loadData() {
       });
     }
   }
+  // Debugging de firmware: defectos activos y fallas evaluadas salen de los reportes de fallos.
+  if (firmware && initiatives.some((i) => i.slug === 'firmware')) {
+    const weeks = firmware.weeklySummary();
+    const covered = new Set(weeks.map((w) => w.week));
+    merged = merged.filter((r) => !(r.initiative === 'firmware' && covered.has(r.week)));
+    for (const w of weeks) {
+      merged.push({
+        id: null, auto: true, initiative: 'firmware', week: w.week, values: { defectos_activos: w.defectos_activos, fallas_identificadas: w.fallas_identificadas, fallas_evaluadas: w.fallas_evaluadas },
+        detail: `${w.fallas_identificadas} reportes de fallo acumulados (${w.nuevas} nuevos en la semana): ${w.defectos_activos} abiertos y ${w.fallas_evaluadas} evaluados.`,
+        sede: '', evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Reportes de fallos',
+      });
+    }
+  }
   merged.sort((a, b) => a.week.localeCompare(b.week));
   const rdSedes = db.prepare('SELECT s.id, s.name FROM rd_sedes s WHERE EXISTS (SELECT 1 FROM rd_aps a WHERE a.sede_id = s.id) ORDER BY s.sort, s.id').all();
   const recorridosTotal = recorridos ? db.prepare("SELECT COUNT(*) AS n FROM recorridos WHERE status = 'completo'").get().n : null;
@@ -437,6 +451,7 @@ async function api(req, res, url) {
     if (it.slug === 'recorridos') throw new HttpError(400, 'Los recorridos proactivos ahora se capturan por día en la sección Recorridos.');
     if (it.slug === 'rediseno') throw new HttpError(400, 'El rediseño WLAN ahora se captura por día dentro de su tablero.');
     if (it.slug === 'encuestas') throw new HttpError(400, 'Las encuestas se registran una por una desde la iniciativa (botón "Nueva encuesta").');
+    if (it.slug === 'firmware') throw new HttpError(400, 'El debugging de firmware ahora se registra dentro de su iniciativa: análisis, actualizaciones y reportes de fallos.');
     if (it.slug === 'monitoreo') throw new HttpError(400, 'El monitoreo proactivo ahora se registra caso por caso dentro de su iniciativa (botón "Registrar caso").');
     if (!isDate(body.week)) throw new HttpError(400, 'Selecciona una fecha válida para la semana.');
     const week = mondayOf(body.week);
@@ -606,6 +621,7 @@ async function api(req, res, url) {
   if (await rediseno.handle(req, res, url, user)) return;
   if (await encuestas.handle(req, res, url, user)) return;
   if (await monitoreo.handle(req, res, url, user)) return;
+  if (await firmware.handle(req, res, url, user)) return;
   throw new HttpError(404, 'Ruta no encontrada.');
 }
 
@@ -613,6 +629,7 @@ const recorridos = initRecorridos({ db, HttpError, send, readJson, audit, now, D
 const rediseno = initRediseno({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const encuestas = initEncuestas({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const monitoreo = initMonitoreo({ db, HttpError, send, readJson, audit, now, DATA_DIR });
+const firmware = initFirmware({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 
 /* ---------- servidor ---------- */
 const server = http.createServer(async (req, res) => {

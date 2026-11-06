@@ -702,3 +702,50 @@ td.lv, .chip.lv { color: var(--ink); }
 @media (max-width: 560px) { .mon-g2 { grid-template-columns: 1fr; } .mon-range { margin-left: 0; } }
 .mon-trio { display: grid; gap: 8px; }
 .mon-trio .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* ---------- Debugging de firmware (v3.23) ---------- */
+.fw-pill { padding: 3px 10px; }
+.fw-cycle { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.fw-cycle h3 { font-size: 15px; margin: 0 0 10px; }
+.fw-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fw-tiles .tile { padding: 12px 14px; }
+.fw-tiles .tile-num { font-size: 28px; }
+.fw-t-good { background: var(--good-bg); border-color: transparent; } .fw-t-good .tile-num { color: var(--good); }
+.fw-t-warn { background: var(--warn-bg); border-color: transparent; } .fw-t-warn .tile-num { color: var(--warn); }
+.fw-t-crit { background: var(--crit-bg); border-color: transparent; } .fw-t-crit .tile-num { color: var(--crit); }
+.fw-grid4 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 32px; }
+.fw-grid4 h3 { font-size: 15px; margin: 0 0 8px; }
+.fw-bar { height: 14px; border-radius: 4px; min-width: 4px; }
+.fw-hrow { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) 56px; }
+.fw-wide { white-space: nowrap; }
+.fw-alert { border-left: 4px solid var(--crit); background: var(--crit-bg); color: var(--crit); }
+.fw-rule { font-size: 13px; margin: 0 0 8px; }
+.fw-table td { vertical-align: top; }
+.fw-table .meta { display: block; }
+.fw-muted td { color: var(--ink-3); }
+.fw-guide { display: grid; gap: 10px; padding-left: 20px; margin: 0 0 12px; }
+.fw-guide p { margin: 2px 0 0; }
+.fw-issues { display: grid; gap: 10px; }
+.fw-issues.is-off { opacity: .45; pointer-events: none; }
+.fw-issue { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 8px; background: #fafaf8; }
+.fw-issue-head { display: flex; justify-content: space-between; align-items: center; }
+.fw-eval { border-radius: var(--radius); padding: 12px 14px; border-left: 4px solid var(--none); background: var(--none-bg); }
+.fw-eval-good { border-color: var(--good); background: var(--good-bg); } .fw-eval-warn { border-color: var(--warn); background: var(--warn-bg); }
+.fw-eval-crit { border-color: var(--crit); background: var(--crit-bg); }
+.fw-eval-head { display: grid; gap: 2px; } .fw-eval-head strong { font-size: 17px; }
+.fw-eval p { margin: 6px 0 0; font-size: 13px; } .fw-eval ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.fw-checks { display: grid; gap: 4px; }
+.fw-check { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line-2); font-weight: 600; cursor: pointer; }
+.fw-check input { width: 18px !important; height: 18px; margin-top: 2px; flex: 0 0 auto; accent-color: var(--red-strong); }
+.fw-check .meta { font-weight: 400; }
+.fw-steps { display: flex; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.fw-steps li { flex: 1; text-align: center; font-size: 12px; padding: 7px 4px; border-radius: var(--radius); background: var(--line-2); color: var(--ink-3); font-weight: 600; }
+.fw-steps li.is-current { background: var(--charcoal); color: #fff; }
+.fw-steps li.is-done { background: var(--good-bg); color: var(--good); }
+.fw-post { background: var(--good-bg); padding: 12px; border-radius: var(--radius); border: 0; }
+.fw-ck3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 8px 0; }
+.fw-cklist { list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; display: grid; gap: 4px; }
+.fw-cklist .is-ok { color: var(--good); } .fw-cklist .is-no { color: var(--ink-3); }
+@media (max-width: 1000px) { .fw-cycle, .fw-grid4 { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .fw-ck3 { grid-template-columns: 1fr; } .fw-steps li { font-size: 11px; padding: 6px 2px; } }
+@media print { .fw-cycle > div, .fw-grid4 > div { break-inside: avoid; } }
