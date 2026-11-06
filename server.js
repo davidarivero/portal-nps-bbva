@@ -12,7 +12,7 @@ const { DatabaseSync } = require('node:sqlite');
 const seed = require('./seed');
 const initRecorridos = require('./recorridos');
 const initRediseno = require('./rediseno');
-const initEncuestas = require('./encuestas');
+const initConexiones = require('./conexiones');
 const initMonitoreo = require('./monitoreo');
 const initFirmware = require('./firmware');
 
@@ -269,7 +269,7 @@ const publicUser = (u) => ({ id: u.id, username: u.username, name: u.name, role:
 
 /* ---------- consultas ---------- */
 function loadData() {
-  const initiatives = db.prepare('SELECT id, slug, def FROM initiatives ORDER BY sort').all().map((r) => ({
+  const initiatives = db.prepare('SELECT id, slug, def FROM initiatives ORDER BY sort').all().filter((r) => !JSON.parse(r.def).retirada).map((r) => ({
     slug: r.slug, ...JSON.parse(r.def),
     milestones: db.prepare(`SELECT id, date, date_end AS dateEnd, label, text, created_by AS createdBy, rd_sede_id AS rdSedeId FROM milestones
       WHERE initiative_id = ? ORDER BY (date IS NULL), date, sort, id`).all(r.id),
@@ -279,7 +279,7 @@ function loadData() {
       COALESCE(u.name, 'Documento base') AS author
     FROM records r JOIN initiatives i ON i.id = r.initiative_id
     LEFT JOIN users u ON u.id = COALESCE(r.updated_by, r.created_by)
-    ORDER BY r.week_start`).all().map((r) => ({ ...r, values: JSON.parse(r.vals), vals: undefined }));
+    ORDER BY r.week_start`).all().map((r) => ({ ...r, values: JSON.parse(r.vals), vals: undefined })).filter((r) => initiatives.some((i) => i.slug === r.initiative));
   // Recorridos proactivos: el valor semanal sale de los recorridos diarios completos.
   let merged = records;
   if (recorridos && initiatives.some((i) => i.slug === 'recorridos')) {
@@ -310,18 +310,17 @@ function loadData() {
       });
     }
   }
-  // Encuestas a usuarios finales: el total semanal sale de las encuestas registradas en el portal.
-  if (encuestas && initiatives.some((i) => i.slug === 'encuestas')) {
-    const weeks = encuestas.weeklySummary();
+  // Monitoreo proactivo 2.0: el % de conexiones exitosas semanal sale de las lecturas diarias (ponderado).
+  if (conexiones && initiatives.some((i) => i.slug === 'conexiones')) {
+    const weeks = conexiones.weeklySummary();
     const covered = new Set(weeks.map((w) => w.week));
-    merged = merged.filter((r) => !(r.initiative === 'encuestas' && covered.has(r.week)));
-    let acumulado = 0;
-    for (const w of weeks.sort((a, b) => a.week.localeCompare(b.week))) {
-      acumulado += w.encuestas;
+    merged = merged.filter((r) => !(r.initiative === 'conexiones' && covered.has(r.week)));
+    const r2 = (v) => (v === null ? null : Math.round(v * 100) / 100);
+    for (const w of weeks) {
       merged.push({
-        id: null, auto: true, initiative: 'encuestas', week: w.week, values: { acumulado, encuestas: w.encuestas, satisfechos: w.satisfechos },
-        detail: `Acumulado: ${acumulado} de 2,000. En la semana: ${w.encuestas} encuestas completas (${Object.entries(w.porSede).map(([k, n]) => `${k} ${n}`).join(', ')}). ${w.satisfechos} dicen que el WiFi cumple sus expectativas (${Math.round((w.satisfechos / w.encuestas) * 100)}%).`,
-        sede: Object.keys(w.porSede).join(', '), evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Encuestas registradas',
+        id: null, auto: true, initiative: 'conexiones', week: w.week, values: { exitosas: r2(w.t.pctOk), auth12303: r2(w.t.pctAuth), investigacion: r2(w.t.pctInv), dispositivos: w.t.disp },
+        detail: `${w.t.disp.toLocaleString('es-MX')} intentos de conexión en ${w.sedes} ${w.sedes === 1 ? 'sede' : 'sedes'}: ${r2(w.t.pctOk)} % exitosos, ${r2(w.t.pctAuth)} % ID Authentication 12303 y ${r2(w.t.pctInv)} % en investigación (${w.t.inv} dispositivos). Casos en investigación registrados: ${w.casos} (${w.resueltos} cerrados).`,
+        sede: '', evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Lecturas diarias',
       });
     }
   }
@@ -358,7 +357,7 @@ function loadData() {
 }
 const getInitiative = (slug) => {
   const row = db.prepare('SELECT id, slug, def FROM initiatives WHERE slug = ?').get(String(slug));
-  if (!row) throw new HttpError(404, 'La iniciativa no existe.');
+  if (!row || JSON.parse(row.def).retirada) throw new HttpError(404, 'La iniciativa no existe.');
   return { id: row.id, slug: row.slug, def: JSON.parse(row.def) };
 };
 const csvCell = (v) => {
@@ -450,7 +449,7 @@ async function api(req, res, url) {
     const it = getInitiative(body.initiative);
     if (it.slug === 'recorridos') throw new HttpError(400, 'Los recorridos proactivos ahora se capturan por día en la sección Recorridos.');
     if (it.slug === 'rediseno') throw new HttpError(400, 'El rediseño WLAN ahora se captura por día dentro de su tablero.');
-    if (it.slug === 'encuestas') throw new HttpError(400, 'Las encuestas se registran una por una desde la iniciativa (botón "Nueva encuesta").');
+    if (it.slug === 'conexiones') throw new HttpError(400, 'El monitoreo 2.0 se calcula solo con las lecturas diarias de conexiones (Cargar Excel o Capturar día).');
     if (it.slug === 'firmware') throw new HttpError(400, 'El debugging de firmware ahora se registra dentro de su iniciativa: análisis, actualizaciones y reportes de fallos.');
     if (it.slug === 'monitoreo') throw new HttpError(400, 'El monitoreo proactivo ahora se registra caso por caso dentro de su iniciativa (botón "Registrar caso").');
     if (!isDate(body.week)) throw new HttpError(400, 'Selecciona una fecha válida para la semana.');
@@ -619,7 +618,7 @@ async function api(req, res, url) {
   }
   if (await recorridos.handle(req, res, url, user)) return;
   if (await rediseno.handle(req, res, url, user)) return;
-  if (await encuestas.handle(req, res, url, user)) return;
+  if (await conexiones.handle(req, res, url, user)) return;
   if (await monitoreo.handle(req, res, url, user)) return;
   if (await firmware.handle(req, res, url, user)) return;
   throw new HttpError(404, 'Ruta no encontrada.');
@@ -627,7 +626,7 @@ async function api(req, res, url) {
 
 const recorridos = initRecorridos({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const rediseno = initRediseno({ db, HttpError, send, readJson, audit, now, DATA_DIR });
-const encuestas = initEncuestas({ db, HttpError, send, readJson, audit, now, DATA_DIR });
+const conexiones = initConexiones({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const monitoreo = initMonitoreo({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const firmware = initFirmware({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 
@@ -658,9 +657,22 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+/** v3.24: "Encuestas a usuarios finales" sale del portal. La iniciativa queda marcada como retirada (no se borra) y sus
+ *  encuestas siguen en la tabla enc_encuestas del respaldo, por si hiciera falta consultarlas. */
+function retirarEncuestas() {
+  const r = db.prepare("SELECT id, def FROM initiatives WHERE slug = 'encuestas'").get();
+  if (!r) return;
+  const def = JSON.parse(r.def);
+  if (def.retirada) return;
+  def.retirada = now();
+  db.prepare('UPDATE initiatives SET def = ?, sort = 99 WHERE id = ?').run(JSON.stringify(def), r.id);
+  audit(null, 'iniciativa_retirada', { slug: 'encuestas' });
+}
+
 (async () => {
   seedDatabase();
-  encuestas.ensure();
+  retirarEncuestas();
+  conexiones.ensure();
   await ensureAdmin();
   server.listen(PORT, HOST, () => console.log(`Portal NPS · WLAN disponible en http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
 })();

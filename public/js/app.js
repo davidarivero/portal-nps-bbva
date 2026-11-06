@@ -310,7 +310,7 @@
       const refs = [];
       if (kk.target !== null && kk.target !== undefined) refs.push({ value: kk.target, label: 'Objetivo', kind: 'target' });
       if (kk.limit) refs.push({ value: kk.limit, label: kk.limitLabel || 'Criterio', kind: 'limit' });
-      Charts.line(chartBox, { points: pts, refs, unit: kk.unit, title: `Tendencia semanal de ${kk.label}`, fmt: (v) => fmt(v, kk.decimals) });
+      Charts.line(chartBox, { points: pts, refs, unit: kk.unit, title: `Tendencia semanal de ${kk.label}`, fmt: (v) => fmt(v, kk.decimals), yMin: kk.yMin });
     };
     const tabs = evals.length > 1
       ? h('div', { class: 'tabs', role: 'tablist' }, evals.map((ev, i) => h('button', {
@@ -411,34 +411,36 @@
             pdfItem(slug === 'recorridos' ? 'Iniciativa y recorridos del periodo' : slug === 'rediseno' ? (window.PortalRediseno?.pdfHint() || 'Iniciativa y seguimiento diario') : 'Esta iniciativa'),
             ...(slug === 'recorridos' && window.PortalRecorridos ? window.PortalRecorridos.exportItems() : []),
             ...(slug === 'rediseno' && window.PortalRediseno ? window.PortalRediseno.exportItems() : []),
-            ...(slug === 'encuestas' && window.PortalEncuestas ? window.PortalEncuestas.exportItems() : []),
+            ...(slug === 'conexiones' && window.PortalConexiones ? window.PortalConexiones.exportItems() : []),
             ...(slug === 'monitoreo' && window.PortalMonitoreo ? window.PortalMonitoreo.exportItems() : []),
             ...(slug === 'firmware' && window.PortalFirmware ? window.PortalFirmware.exportItems() : []),
-            slug === 'monitoreo' || slug === 'firmware' ? null : { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
+            ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
-          slug === 'encuestas' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/encuesta/nueva' }, 'Nueva encuesta') : null,
+          slug === 'conexiones' && canWrite() ? [h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('excel') }, 'Cargar Excel'),
+            h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('caso') }, 'Registrar caso'),
+            h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalConexiones?.nuevo('dia') }, 'Capturar día')] : null,
           slug === 'monitoreo' && isAdmin() ? h('button', { class: 'btn', type: 'button', onclick: () => window.PortalMonitoreo?.importar() }, 'Importar histórico') : null,
           slug === 'monitoreo' && canWrite() ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalMonitoreo?.open() }, 'Registrar caso') : null,
           slug === 'firmware' && canWrite() ? [h('button', { class: 'btn', type: 'button', onclick: () => window.PortalFirmware?.nuevo('analisis') }, 'Nuevo análisis'),
             h('button', { class: 'btn', type: 'button', onclick: () => window.PortalFirmware?.nuevo('actualizacion') }, 'Registrar actualización'),
             h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalFirmware?.nuevo('reporte') }, 'Reportar fallo')] : null,
-          !['recorridos', 'rediseno', 'encuestas', 'monitoreo', 'firmware'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
-      slug === 'monitoreo' || slug === 'firmware' ? null : kpiBlock,
+          !['recorridos', 'rediseno', 'conexiones', 'monitoreo', 'firmware'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
+      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : kpiBlock,
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
-      slug === 'encuestas' ? h('div', { id: 'enc-root', class: 'rd-root' }) : null,
+      slug === 'conexiones' ? h('div', { id: 'cx-root', class: 'rd-root' }) : null,
       slug === 'monitoreo' ? h('div', { id: 'mon-root', class: 'rd-root' }) : null,
       slug === 'firmware' ? h('div', { id: 'fw-root', class: 'rd-root' }) : null,
-      slug === 'monitoreo' || slug === 'firmware' ? null : chartPanel,
-      slug === 'monitoreo' || slug === 'firmware' ? null : valueBlock,
-      slug === 'monitoreo' || slug === 'firmware' ? null : h('section', { class: 'panel ini-general' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
-      slug === 'monitoreo' || slug === 'firmware' ? null : sectionsBlock,
+      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : chartPanel,
+      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : valueBlock,
+      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : h('section', { class: 'panel ini-general' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
+      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : sectionsBlock,
     );
-    if (!noKpi && slug !== 'monitoreo' && slug !== 'firmware') drawChart(main);
+    if (!noKpi && !['monitoreo', 'firmware', 'conexiones'].includes(slug)) drawChart(main);
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
     if (slug === 'recorridos' && window.PortalRecorridos) window.PortalRecorridos.mount(document.getElementById('rec-root'));
-    if (slug === 'encuestas' && window.PortalEncuestas) window.PortalEncuestas.mount(document.getElementById('enc-root'));
+    if (slug === 'conexiones' && window.PortalConexiones) window.PortalConexiones.mount(document.getElementById('cx-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock], draw: () => drawChart(curEv || main) });
     if (slug === 'firmware' && window.PortalFirmware) window.PortalFirmware.mount(document.getElementById('fw-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock], draw: () => drawChart(curEv || main) });
     if (slug === 'monitoreo' && window.PortalMonitoreo) window.PortalMonitoreo.mount(document.getElementById('mon-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock], draw: () => drawChart(curEv || main) }).then(() => { if (state.openMon) { state.openMon = false; window.PortalMonitoreo.open(); } });
   }
@@ -465,10 +467,10 @@
     if (!canWrite()) return add(h('p', { class: 'empty' }, 'Tu usuario es de consulta: no puede capturar avances.'));
     if (slugArg === 'recorridos') { window.location.hash = '#/recorrido/nuevo'; return; }
     if (slugArg === 'rediseno') { window.location.hash = '#/iniciativa/rediseno'; return; }
-    if (slugArg === 'encuestas') { window.location.hash = '#/encuesta/nueva'; return; }
+    if (slugArg === 'conexiones') { window.location.hash = '#/iniciativa/conexiones'; return; }
     if (slugArg === 'monitoreo') { state.openMon = true; window.location.hash = '#/iniciativa/monitoreo'; return; }
     if (slugArg === 'firmware') { window.location.hash = '#/iniciativa/firmware'; return; }
-    const inits = state.data.initiatives.filter((i) => !['recorridos', 'rediseno', 'encuestas', 'monitoreo', 'firmware'].includes(i.slug));
+    const inits = state.data.initiatives.filter((i) => !['recorridos', 'rediseno', 'conexiones', 'monitoreo', 'firmware'].includes(i.slug));
     let it = inits.find((i) => i.slug === slugArg) || inits[0];
     const today = todayStr();
 
@@ -683,7 +685,7 @@
     let key = parts[0] || 'tablero';
     if (state.user.mustChange) key = 'cuenta';
     view.textContent = '';
-    renderChrome(key === 'iniciativa' || key === 'recorrido' || key === 'encuesta' ? 'tablero' : key);
+    renderChrome(key === 'iniciativa' || key === 'recorrido' ? 'tablero' : key);
     try {
       if (key === 'tablero') viewDashboard();
       else if (key === 'iniciativa') viewDetail(parts[1]);

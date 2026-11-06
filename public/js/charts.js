@@ -31,17 +31,20 @@
       const pts = opts.points;
       const m = { t: 22, r: narrow ? 16 : 24, b: 46, l: 46 };
       const top = Math.max(0, ...pts.map((p) => p.value), ...refs.map((r) => r.value));
-      const step = niceStep((top * 1.1 || 1) / 4);
-      const nTicks = Math.max(2, Math.ceil((top * 1.1 || 1) / step));
-      const yMax = step * nTicks;
+      // yMin opcional: acerca el eje cuando los valores están en una franja angosta (por ejemplo, 90 % a 95 %)
+      const yMin = opts.yMin ? Math.min(opts.yMin, ...pts.map((p) => p.value), ...refs.map((r) => r.value)) : 0;
+      const span = yMin ? top - yMin : 0;
+      const step = yMin ? niceStep((span || 1) / 4) : niceStep((top * 1.1 || 1) / 4);
+      const nTicks = yMin ? Math.max(2, Math.ceil((span * 1.12 || 1) / step)) : Math.max(2, Math.ceil((top * 1.1 || 1) / step));
+      const yMax = yMin + step * nTicks;
       const x = (i) => (pts.length === 1 ? m.l + (W - m.l - m.r) / 2 : m.l + 14 + (i * (W - m.l - m.r - 28)) / (pts.length - 1));
-      const y = (v) => m.t + (1 - v / yMax) * (H - m.t - m.b);
+      const y = (v) => m.t + (1 - (v - yMin) / (yMax - yMin)) * (H - m.t - m.b);
 
       const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': opts.title || 'Tendencia semanal' });
 
       // rejilla y eje Y
       for (let i = 0; i <= nTicks; i++) {
-        const v = step * i;
+        const v = yMin + step * i;
         svg.append(el('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: i === 0 ? 'ch-axis' : 'ch-grid' }));
         svg.append(el('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'ch-tick' }, tickFmt.format(v)));
       }
@@ -62,7 +65,7 @@
       // serie
       if (pts.length > 1) {
         const d = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
-        const area = `${d} L${x(pts.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`;
+        const area = `${d} L${x(pts.length - 1).toFixed(1)},${y(yMin)} L${x(0).toFixed(1)},${y(yMin)} Z`;
         svg.append(el('path', { d: area, class: 'ch-area' }));
         svg.append(el('path', { d, class: 'ch-line', fill: 'none' }));
       }

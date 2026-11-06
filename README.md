@@ -6,7 +6,7 @@ Portal web de Sipnology para dar seguimiento a las iniciativas de mejora NPS de 
 - **Tablero ejecutivo**: las 7 iniciativas con métrica inicial, actual y objetivo, estado y tendencia. Incluye modo presentación (pantalla completa, sin controles de edición).
 - **Detalle por iniciativa**: gráfica semanal contra el objetivo, valor al negocio, impacto esperado, hitos, bitácora de avances y metodología.
 - **Captura semanal** (mDNS y QoS): cada ingeniero registra las métricas de la semana con su detalle, sede y enlace de evidencia. Un registro por iniciativa por semana.
-- **Captura diaria o por caso**: Recorridos proactivos, Rediseño WLAN, Monitoreo proactivo, Encuestas y Debugging de firmware se registran dentro de su iniciativa; su total semanal se calcula solo.
+- **Captura diaria o por caso**: Monitoreo proactivo 2.0, Recorridos proactivos, Rediseño WLAN, Debugging de firmware y Monitoreo proactivo se registran dentro de su iniciativa; su total semanal se calcula solo.
 - **Usuarios y roles**: administrador, ingeniero (captura) y solo consulta.
 - **Exportación** de todos los avances a CSV.
 
@@ -60,13 +60,13 @@ Cada usuario o equipo revisado en Meraki es un caso (`mon_casos`, con su histori
 - **Reportes de fallos:** tipo, subtipo, patrón, severidad, estado de investigación con historial, impacto y alcance. Con 4 reportes del mismo tipo y patrón en 30 días aparece una advertencia de posible bug. Cada actualización instalada queda 30 días en seguimiento.
 - Los indicadores de la iniciativa (defectos activos y % de fallas evaluadas) se calculan solos con los reportes. Catálogo de sedes propio en `public/js/firmware-comun.js`.
 
-## Encuestas a usuarios finales
+## Monitoreo proactivo de indicadores clave 2.0 (conexiones)
 
-- Captura guiada (pensada para celular) con el speech y las 4 preguntas de la metodología; al final se muestra la postal de recomendaciones (`public/img/postal-wifi-bbva.jpg`).
-- Meta: 100 encuestas por día hábil (50 en Polanco y 50 en Reforma) durante 20 días hábiles; 2,000 en total. Definición compartida en `public/js/encuestas-comun.js`.
-- Reportes para BBVA: PDF ejecutivo y por sede, y CSV de respuestas, avance diario, pisos y comentarios.
-
-**Respaldo.** En Usuarios, el administrador puede descargar la base de datos completa.
+- Indicador: % de conexiones exitosas a BBVA_GLOBAL y BBVA = suma de exitosos ÷ suma de dispositivos (ponderado). Inicial 91.3 % (semana del 26 al 30 oct 2026), objetivo 95 %.
+- Lecturas diarias por sede y SSID (Torre Reforma, Parques Polanco, Tecnoparque, Murano, Toreo, Guadalajara y Tijuana): dispositivos, exitosos, fallidos e ID Authentication 12303. En investigación = fallidos − 12303.
+- Carga por Excel (una hoja por sede, como el ejercicio de Reforma y Polanco) con vista previa, o captura de un día en el portal. Cada carga se puede deshacer.
+- El universo en investigación se atiende caso por caso (causa, estado, acción e historial).
+- Reporte ejecutivo en PDF (composición, resultado por sede, trazabilidad semanal y foco en investigación) y CSV semanal, diario y de casos.
 
 ## Requisitos
 
@@ -159,7 +159,7 @@ Antes de exponerlo a internet conviene una revisión de seguridad propia, como c
 
 ## Datos iniciales
 
-`seed.js` contiene las 6 iniciativas originales tal como aparecen en la presentación "Actividades Mejora WLAN - NPS" (octubre 2026): métricas inicial y objetivo, textos, hitos y un primer registro con la "métrica actual" del documento, asignado a la semana del 28 de septiembre de 2026. Solo se carga cuando la base está vacía; la iniciativa de Encuestas se agrega al arrancar si no existe. Las métricas inicial y objetivo se editan después desde el portal (administrador, en el detalle de cada iniciativa).
+`seed.js` contiene las 6 iniciativas originales tal como aparecen en la presentación "Actividades Mejora WLAN - NPS" (octubre 2026): métricas inicial y objetivo, textos, hitos y un primer registro con la "métrica actual" del documento, asignado a la semana del 28 de septiembre de 2026. Solo se carga cuando la base está vacía; Monitoreo proactivo 2.0 se agrega al arrancar si no existe (y queda primera); Encuestas a usuarios finales quedó retirada en la versión 3.24 (sus datos siguen en la tabla enc_encuestas). Las métricas inicial y objetivo se editan después desde el portal (administrador, en el detalle de cada iniciativa).
 
 Para agregar una iniciativa nueva, añade su definición en `seed.js` antes del primer arranque, o inserta la fila en la tabla `initiatives`.
 
@@ -172,7 +172,7 @@ rediseno.js          rediseño WLAN: lecturas diarias, carga de Excel y validaci
 rediseno-formato.js  lectura del reporte de Excel de rediseño
 xlsx-lite.js         lector mínimo de archivos .xlsx (rediseño y monitoreo)
 monitoreo.js         monitoreo proactivo: casos, seguimiento, pendientes e importación
-encuestas.js         encuestas a usuarios finales y sus reportes
+conexiones.js        monitoreo proactivo 2.0: lecturas diarias de conexiones, carga de Excel y casos en investigación
 firmware.js          debugging de firmware: análisis, actualizaciones, reportes de fallos y evidencias
 seed.js              definición inicial de iniciativas
 seed-rediseno.json   histórico inicial de rediseño

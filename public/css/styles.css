@@ -749,3 +749,20 @@ td.lv, .chip.lv { color: var(--ink); }
 @media (max-width: 1000px) { .fw-cycle, .fw-grid4 { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .fw-ck3 { grid-template-columns: 1fr; } .fw-steps li { font-size: 11px; padding: 6px 2px; } }
 @media print { .fw-cycle > div, .fw-grid4 > div { break-inside: avoid; } }
+
+/* ---------- Monitoreo proactivo 2.0 · conexiones (v3.24) ---------- */
+.cx-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.cx-tiles-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.cx-tiles .tile-num { font-size: 30px; }
+.cx-v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.cx-good { color: var(--good); } .cx-prog { color: var(--prog); } .cx-crit { color: var(--crit); }
+td.cx-good { background: var(--good-bg); } td.cx-prog { background: var(--prog-bg); } td.cx-crit { background: var(--crit-bg); }
+.cx-delta { display: block; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.cx-delta.is-up { color: var(--good); } .cx-delta.is-down { color: var(--crit); }
+.cx-trend th, .cx-trend td { white-space: nowrap; }
+.cx-focus { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.cx-focus h3 { font-size: 15px; margin: 0 0 8px; }
+.cx-meter { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+.cx-meter-bar { flex: 1; height: 10px; background: var(--line-2); border-radius: 999px; overflow: hidden; }
+.cx-meter-bar span { display: block; height: 100%; background: var(--good); }
+@media (max-width: 1000px) { .cx-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cx-focus, .cx-tiles-3 { grid-template-columns: 1fr; } }
