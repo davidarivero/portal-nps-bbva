@@ -418,6 +418,7 @@
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
           slug === 'conexiones' && canWrite() ? [h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('excel') }, 'Cargar Excel'),
+            h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('detalle') }, 'Cargar reportes Abaton / ISE'),
             h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('caso') }, 'Registrar caso'),
             h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalConexiones?.nuevo('dia') }, 'Capturar día')] : null,
           slug === 'monitoreo' && isAdmin() ? h('button', { class: 'btn', type: 'button', onclick: () => window.PortalMonitoreo?.importar() }, 'Importar histórico') : null,

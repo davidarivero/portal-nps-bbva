@@ -180,45 +180,8 @@
     const T = (x, y, txt, size, fill, weight = 400, anchor = 'start') => `<text x="${x}" y="${y}" ${F} font-size="${size}" fill="${fill}" font-weight="${weight}" text-anchor="${anchor}">${esc(txt)}</text>`;
     const val = (c, a, i) => (c.v[a.id] ? c.v[a.id][i] : null);
     const nums = (arr) => arr.filter((v) => v !== null && v !== undefined);
-    const COL = ['#d3d3cf', '#a9aaae', '#6d6e71', HEX.red].slice(-caps.length);
-    while (COL.length < caps.length) COL.unshift('#e6e6e3');
-    const capLbl = (c) => `${wd(c.fecha)} ${dayMonth(c.fecha)}${c.hora ? ' · ' + c.hora : ''}`;
-    if (caps.length > 4) return sedeDots({ K, s, W, P, U, aps, caps, last, wd, short, T, val, nums });
-    const Y1 = 200, CH1 = 300, Y2 = Y1 + CH1 + 150, CH2 = 220, H = Y2 + CH2 + 150;
-    let g = `<rect width="${W}" height="${H}" fill="#ffffff"/><rect width="${W}" height="10" fill="${HEX.red}"/>`;
-    g += `<image href="${await logo()}" x="${P}" y="34" width="150" height="112"/>`;
-    g += T(P + 190, 70, `${state.data.program.client} · Mejora NPS · WLAN`.toUpperCase(), 17, HEX.ink3, 600);
-    g += T(P + 190, 114, `Rediseño WLAN · ${s.name}`, 42, HEX.ink, 700);
-    g += T(P + 190, 150, `${K.dias.map((d) => `${wd(d)} ${fullDate(d)}`).join(' y ')} · ${caps.length} ${caps.length === 1 ? 'captura' : 'capturas'} · ${aps.length} AP`, 22, HEX.ink2, 600);
-    // leyenda de capturas (común a las dos gráficas)
-    let lx = P;
-    caps.forEach((c, k) => { const t = capLbl(c) + (c === last ? ' (última)' : ''); g += `<rect x="${lx}" y="${Y1 - 30}" width="18" height="18" rx="3" fill="${COL[k]}"/>` + T(lx + 26, Y1 - 15, t, 16, c === last ? HEX.ink : HEX.ink2, c === last ? 700 : 500); lx += 26 + t.length * 9 + 34; });
-    const chart = (Y, hgt, title, idx, top, step, suf, refs) => {
-      const x0 = P + 54, x1 = W - P, y0 = Y + 50, y1 = Y + 50 + hgt;
-      const Yf = (v) => y0 + (1 - Math.min(v, top) / top) * (y1 - y0);
-      let o = T(P, Y + 24, title, 26, HEX.ink, 700);
-      for (let v = 0; v <= top; v += step) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${v ? '#efefec' : '#c9c9c5'}"/>` + T(x0 - 10, Yf(v) + 5, v + suf, 15, HEX.ink3, 400, 'end');
-      for (const [v, col, dash, lbl] of refs) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${col}" stroke-width="2" stroke-dasharray="${dash}"/>` + T(x1, Yf(v) - 7, lbl, 14, col, 700, 'end');
-      const gw = (x1 - x0) / aps.length, bw = Math.max(5, Math.min(34, (gw - 12) / caps.length - 2));
-      aps.forEach((a, i) => {
-        const gx0 = x0 + i * gw + (gw - caps.length * (bw + 2) + 2) / 2;
-        caps.forEach((c, k) => {
-          const v = val(c, a, idx); if (v === null) return;
-          const x = gx0 + k * (bw + 2), y = Yf(v);
-          o += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(1, y1 - y)}" rx="2" fill="${COL[k]}"/>`;
-          if (bw >= 13) { const isL = c === last; const hi = idx ? v >= (U.canalAlto ?? 75) : v >= U.regular, crit = idx ? v >= (U.canalRediseno ?? 85) : v > U.alarm; const ink = crit ? HEX.critLine : hi ? HEX.warnLine : isL ? HEX.ink : HEX.ink3; o += T(x + bw / 2, y - 5, nf(v, 0), bw >= 18 ? 14 : 12, ink, isL || hi ? 700 : 400, 'middle'); }
-        });
-        o += T(x0 + i * gw + gw / 2, y1 + 24, short(a.name), 14, HEX.ink2, 600, 'middle');
-      });
-      return o;
-    };
-    const uTop = Math.ceil(Math.max(U.alarm * 1.12, ...nums(aps.flatMap((a) => caps.map((c) => val(c, a, 0))))) / 10) * 10;
-    g += chart(Y1, CH1, 'Usuarios por AP', 0, uTop, 10, '', [[U.alarm, HEX.critLine, '6 5', `Criterio de rediseño (${U.alarm})`], [U.regular, HEX.warnLine, '2 5', `Regular (${U.regular})`]]);
-    g += chart(Y2, CH2, 'Ocupación de canal por AP (%)', 1, 100, 25, '%', [[U.canalRediseno ?? 85, HEX.critLine, '6 5', `Criterio de rediseño (${U.canalRediseno ?? 85}%)`], [U.canalAlto ?? 75, HEX.warnLine, '2 5', `Alta (${U.canalAlto ?? 75}%)`]]);
-    const fy = H - 30;
-    g += T(P, fy, 'AP identificado por piso y número (P32-05 = AP-P32-…-05). Sin sábados ni domingos.', 15, HEX.ink3);
-    g += T(W - P, fy, `Generado el ${stamp(new Date().toISOString())} por ${state.user.name} · Sipnology`, 15, HEX.ink3, 400, 'end');
-    return savePng(g, W, H, s, last);
+    // Siempre el mismo formato (gráfica de puntos por captura), sin importar cuántas capturas haya.
+    return sedeDots({ K, s, W, P, U, aps, caps, last, wd, short, T, val, nums });
   }
   async function savePng(g, W, H, s, last) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
@@ -229,9 +192,8 @@
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `rediseno-wlan-${s.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}-${last.fecha}${last.hora ? '-' + last.hora.replace(':', '') : ''}.png`;
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
-  /* Muchas capturas por día (cada hora o cada 2 horas): las barras ya no caben. Gráfica de puntos:
-     por cada AP, un punto por captura en orden de hora (como una mini línea de tiempo), un tono por día,
-     la última captura en rojo con su valor. */
+  /* Gráfica de puntos: por cada AP, un punto por captura en orden de hora (como una mini línea de tiempo),
+     un tono por día, la última captura en rojo con su valor. Se usa con cualquier número de capturas. */
   async function sedeDots({ K, s, W, P, U, aps, caps, last, wd, short, T, val, nums }) {
     const days = K.dias.filter((d) => caps.some((c) => c.fecha === d));
     const DAYC = days.length > 1 ? ['#b9bab6', '#505155'] : ['#505155'];
@@ -241,11 +203,11 @@
     g += `<image href="${await logo()}" x="${P}" y="34" width="150" height="112"/>`;
     g += T(P + 190, 70, `${state.data.program.client} · Mejora NPS · WLAN`.toUpperCase(), 17, HEX.ink3, 600);
     g += T(P + 190, 114, `Rediseño WLAN · ${s.name}`, 42, HEX.ink, 700);
-    g += T(P + 190, 150, `${days.map((d) => `${wd(d)} ${fullDate(d)}`).join(' y ')} · ${caps.length} capturas · ${aps.length} AP`, 22, HEX.ink2, 600);
+    g += T(P + 190, 150, `${days.map((d) => `${wd(d)} ${fullDate(d)}`).join(' y ')} · ${caps.length} ${caps.length === 1 ? 'captura' : 'capturas'} · ${aps.length} AP`, 22, HEX.ink2, 600);
     // leyenda común
-    const hrs = (d) => { const hs = caps.filter((c) => c.fecha === d).map((c) => c.hora).filter(Boolean); return hs.length ? `${hs[0]} a ${hs[hs.length - 1]}` : ''; };
+    const hrs = (d) => { const hs = caps.filter((c) => c.fecha === d).map((c) => c.hora).filter(Boolean); return hs.length > 1 ? `${hs[0]} a ${hs[hs.length - 1]}` : hs.length ? hs[0] : ''; };
     let lx = P; const ly = 196;
-    days.forEach((d, i) => { const t = `${wd(d)} ${dayMonth(d)} (${caps.filter((c) => c.fecha === d).length} capturas, ${hrs(d)})`; g += `<circle cx="${lx + 8}" cy="${ly - 6}" r="7" fill="${DAYC[i]}"/>` + T(lx + 24, ly, t, 16, HEX.ink2, 500); lx += 24 + t.length * 8.6 + 30; });
+    days.forEach((d, i) => { const t = `${wd(d)} ${dayMonth(d)} (${(() => { const n = caps.filter((c) => c.fecha === d).length; return `${n} ${n === 1 ? 'captura' : 'capturas'}`; })()}${hrs(d) ? ', ' + hrs(d) : ''})`; g += `<circle cx="${lx + 8}" cy="${ly - 6}" r="7" fill="${DAYC[i]}"/>` + T(lx + 24, ly, t, 16, HEX.ink2, 500); lx += 24 + t.length * 8.6 + 30; });
     { const t = `Última captura: ${wd(last.fecha)} ${dayMonth(last.fecha)}${last.hora ? ' · ' + last.hora : ''}`; g += `<circle cx="${lx + 9}" cy="${ly - 6}" r="9" fill="${HEX.red}" stroke="#fff" stroke-width="2"/>` + T(lx + 26, ly, t, 16, HEX.ink, 700); }
     const chart = (Y, hgt, title, sub, idx, top, step, suf, refs) => {
       const x0 = P + 54, x1 = W - P, y0 = Y + 80, y1 = Y + 80 + hgt;
@@ -253,11 +215,11 @@
       let o = T(P, Y + 24, title, 26, HEX.ink, 700) + T(P, Y + 48, sub, 15, HEX.ink3);
       const gw = (x1 - x0) / aps.length, pad = Math.min(14, gw * 0.14), gapDay = days.length > 1 ? Math.min(10, gw * 0.1) : 0;
       const step2 = (gw - 2 * pad - gapDay) / Math.max(1, caps.length - 1);
-      const X = (i, k) => x0 + i * gw + pad + k * step2 + (dayIdx(caps[k]) > 0 ? gapDay : 0);
+      const X = (i, k) => (caps.length === 1 ? x0 + i * gw + gw / 2 : x0 + i * gw + pad + k * step2 + (dayIdx(caps[k]) > 0 ? gapDay : 0));
       aps.forEach((a, i) => { if (i % 2) o += `<rect x="${x0 + i * gw}" y="${y0 - 6}" width="${gw}" height="${y1 - y0 + 6}" fill="#f7f7f5"/>`; });
       for (let v = 0; v <= top; v += step) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${v ? '#e9e9e6' : '#c9c9c5'}"/>` + T(x0 - 10, Yf(v) + 5, v + suf, 15, HEX.ink3, 400, 'end');
       for (const [v, col, dash, lbl] of refs) o += `<line x1="${x0}" x2="${x1}" y1="${Yf(v)}" y2="${Yf(v)}" stroke="${col}" stroke-width="2" stroke-dasharray="${dash}"/>` + T(x1, Yf(v) - 7, lbl, 14, col, 700, 'end');
-      const r = Math.max(2.5, Math.min(5, step2 * 0.42));
+      const r = caps.length === 1 ? 5 : Math.max(2.5, Math.min(5, step2 * 0.42));
       aps.forEach((a, i) => {
         // una línea delgada por día une los puntos en orden de hora
         days.forEach((d, di) => {

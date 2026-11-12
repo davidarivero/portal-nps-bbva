@@ -72,7 +72,15 @@
     const rows = L(); const t = X.totales(rows);
     const out = [];
     if (!rows.length) {
-      out.push(h('section', { class: 'panel' }, h('p', { class: 'empty' }, 'No hay lecturas en este periodo. Amplía las fechas o carga el Excel diario de conexiones.')));
+      const hayOtras = D.lecturas.length > 0;
+      out.push(h('section', { class: 'panel cx-empty' }, hayOtras
+        ? [h('p', { class: 'empty' }, `No hay lecturas en este periodo. Las cargadas van del ${fullDate(D.lecturas[D.lecturas.length - 1].fecha)} al ${fullDate(D.lecturas[0].fecha)}.`),
+          h('button', { class: 'btn', type: 'button', onclick: () => { view.desde = null; view.hasta = null; render(); } }, 'Ver todo el periodo')]
+        : [h('h2', {}, 'Aún no hay información cargada en el portal'),
+          h('p', { class: 'muted' }, 'La información vive en la base de datos del servidor, no en el paquete de la versión: hay que cargarla una vez en este portal.'),
+          h('ol', {}, h('li', {}, 'Cargar Excel: el Excel diario de conexiones (por ejemplo Ejercicio_Reforma_Semana_26-30). Da el % de conexiones exitosas.'),
+            h('li', {}, 'Cargar reportes Abaton / ISE: selecciona todos los archivos de la semana a la vez. Valida las cifras, crea los casos del universo en investigación y genera el análisis de detalle.')),
+          canWrite() ? h('div', { class: 'actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openExcel() }, '1. Cargar Excel'), ' ', h('button', { class: 'btn', type: 'button', onclick: () => openDetalle() }, '2. Cargar reportes Abaton / ISE')) : h('p', { class: 'muted' }, 'Pide a un ingeniero o administrador que cargue los archivos.')]));
       out.push(EXT.resumen[1]); return out;
     }
     const delta = t.pctOk - X.META.inicial, falta = X.META.objetivo - t.pctOk;
