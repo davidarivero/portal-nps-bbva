@@ -5,8 +5,8 @@ Portal web de Sipnology para dar seguimiento a las iniciativas de mejora NPS de 
 - **Inicio de sesión** con usuario y contraseña propios del portal.
 - **Tablero ejecutivo**: las 7 iniciativas con métrica inicial, actual y objetivo, estado y tendencia. Incluye modo presentación (pantalla completa, sin controles de edición).
 - **Detalle por iniciativa**: gráfica semanal contra el objetivo, valor al negocio, impacto esperado, hitos, bitácora de avances y metodología.
-- **Captura semanal** (mDNS y QoS): cada ingeniero registra las métricas de la semana con su detalle, sede y enlace de evidencia. Un registro por iniciativa por semana.
-- **Captura diaria o por caso**: Monitoreo proactivo 2.0, Recorridos proactivos, Rediseño WLAN, Debugging de firmware y Monitoreo proactivo se registran dentro de su iniciativa; su total semanal se calcula solo.
+- **Captura semanal** (mDNS): cada ingeniero registra las métricas de la semana con su detalle, sede y enlace de evidencia. Un registro por iniciativa por semana.
+- **Captura diaria o por caso**: Homologación de QoS WLAN (solo por archivos), Monitoreo proactivo 2.0, Recorridos proactivos, Rediseño WLAN y Monitoreo proactivo se registran dentro de su iniciativa; su total semanal se calcula solo.
 - **Usuarios y roles**: administrador, ingeniero (captura) y solo consulta.
 - **Exportación** de todos los avances a CSV.
 
@@ -53,7 +53,9 @@ Cada usuario o equipo revisado en Meraki es un caso (`mon_casos`, con su histori
 - **Importar histórico** (administrador): carga una sola vez el Excel de seguimiento anterior (una hoja por sede), con vista previa, corrección de fechas y sin duplicar.
 - Exportación: PDF del Resumen y CSV de casos.
 
-## Debugging periódico de firmware
+## Debugging periódico de firmware (retirada en la versión 3.26)
+
+La iniciativa ya no aparece en el portal. Sus tablas (fw_*) y evidencias se conservan en la base.
 
 - **Análisis de firmware:** cada Known Issue de la versión objetivo se registra con su impacto (bajo 1, medio 2, alto 3 puntos; crítico bloquea) y si aplica a nuestros modelos. El portal recomienda *migrar*, *piloto* (un alto aplicable o 5 puntos o más) o *no migrar* (un crítico aplicable). Un administrador puede aprobar el resultado de un piloto.
 - **Actualizaciones:** asistente de 5 pasos (datos, antes, durante, después y resumen) con checklist, AP actualizados contra alcance, evidencia de conectividad (imagen o PDF, en `data/firmware/`) e impacto posterior. Requiere un análisis aprobado de la misma sede, modelo y firmware objetivo; sin él, solo un administrador registra una excepción justificada.
@@ -173,7 +175,8 @@ rediseno-formato.js  lectura del reporte de Excel de rediseño
 xlsx-lite.js         lector mínimo de archivos .xlsx (rediseño y monitoreo)
 monitoreo.js         monitoreo proactivo: casos, seguimiento, pendientes e importación
 conexiones.js        monitoreo proactivo 2.0: lecturas diarias de conexiones, carga de Excel y casos en investigación
-firmware.js          debugging de firmware: análisis, actualizaciones, reportes de fallos y evidencias
+qos.js               homologación de QoS WLAN: lectura de respaldos (.zip, .txt, .xlsx), cortes, objetivos y exportaciones
+firmware.js          debugging de firmware (iniciativa retirada; se conserva para no perder datos)
 seed.js              definición inicial de iniciativas
 seed-rediseno.json   histórico inicial de rediseño
 crear-usuarios.js    alta masiva de usuarios desde CSV (npm run usuarios)
@@ -191,3 +194,15 @@ En Monitoreo 2.0 → Registro diario → «Cargar reportes Abaton / ISE» se sub
 - **ISE (RADIUS Authentications, `REPORTE_ISE_26_Octubre_Polanco.xlsx`)**: eventos fallidos resumidos por código, piso y AP. ISE corta a las 21:00, así que el archivo de un día trae eventos de la noche anterior.
 
 El reporte ejecutivo agrega la sección «Análisis de detalle» (composición, recurrencia, códigos de ISE, pisos y AP). Tablas nuevas: cx_dispositivos, cx_ise_codigo y cx_ise_lugar (aditivas).
+
+## Homologación de QoS WLAN (v3.26)
+
+Primera iniciativa del tablero. Mide la pérdida de paquetes en las interfaces de switch que conectan a un AP, con la política `2P2Q1T_APs` (Voice, Video, Signaling y class-default).
+
+- **Indicador:** % de interfaces hacia AP sin pérdida en Voice, Video ni Signaling, con cero tolerancia (cualquier byte descartado cuenta). class-default se muestra como referencia.
+- **Métrica inicial:** sale de la línea base (archivos tomados antes de QoS): % de interfaces sin ningún drop. **Objetivos mensuales** editables por el administrador (Acerca de la iniciativa → Editar objetivos) y **seguimiento semanal**.
+- **Solo por archivos:** botón «Cargar archivos». Acepta el .zip completo de respaldos, .txt (`Backup_QoS_IP_HOSTNAME.txt` o salida de consola con `show platform hardware fed [switch] active qos queue stats interface X`) y .xlsx (Hostname, Interfaz y Salida FED; o una hoja por sede con AP, Puerto y Drops, solo para la línea base). Se revisa antes de guardar y se elige la fecha de corte y el tipo (línea base o seguimiento semanal).
+- **Cálculo semanal:** si el contador del switch no se reinició, la pérdida de la semana es el contador actual menos el de la carga anterior; si se reinició, el contador actual.
+- **Sede** por el nombre del switch (TF, CO, MURANO, TOREO, Tecno, GDL, MTY, PUEBLA, LEON, TIJUANA). Las sedes sin pérdida se muestran primero.
+- **Exportar:** presentación ejecutiva en PowerPoint (.pptx) y PDF, reporte en PDF y dos CSV (semanal por sede e interfaces del corte). El PowerPoint se genera en el navegador con PptxGenJS (`public/js/vendor/pptxgen.bundle.js`, licencia MIT).
+- Tablas nuevas: qos_cortes, qos_lecturas, qos_cargas y qos_objetivos (aditivas). La iniciativa anterior «Homologación QoS en bancas remotas» se reemplaza; sus registros semanales dejan de mostrarse.

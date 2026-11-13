@@ -2,10 +2,10 @@
 /* Lector mínimo de archivos .xlsx (ZIP + XML) sin dependencias. Devuelve las celdas con valor de cada hoja. */
 const zlib = require('node:zlib');
 
-function unzip(buf, wanted, limit = 80 * 1024 * 1024) {
+function unzip(buf, wanted, limit = 80 * 1024 * 1024, asBuffer = false) {
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
-  if (eocd < 0) throw new Error('El archivo no es un Excel .xlsx válido.');
+  if (eocd < 0) throw new Error(asBuffer ? 'El archivo no es un .zip válido.' : 'El archivo no es un Excel .xlsx válido.');
   const count = buf.readUInt16LE(eocd + 10);
   let p = buf.readUInt32LE(eocd + 16);
   const out = new Map(); let total = 0;
@@ -21,7 +21,7 @@ function unzip(buf, wanted, limit = 80 * 1024 * 1024) {
     if (!data) throw new Error('El archivo usa una compresión no compatible.');
     total += data.length;
     if (total > limit) throw new Error('El archivo es demasiado grande.');
-    out.set(name, data.toString('utf8'));
+    out.set(name, asBuffer ? data : data.toString('utf8'));
   }
   return out;
 }
@@ -70,4 +70,4 @@ function readXlsx(buf) {
   }
   return { sheets, date1904: /date1904="(1|true)"/.test(wb) };
 }
-module.exports = { readXlsx };
+module.exports = { readXlsx, unzip };

@@ -15,6 +15,7 @@ const initRediseno = require('./rediseno');
 const initConexiones = require('./conexiones');
 const initMonitoreo = require('./monitoreo');
 const initFirmware = require('./firmware');
+const initQos = require('./qos');
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -350,6 +351,18 @@ function loadData() {
       });
     }
   }
+  // Homologación de QoS WLAN: el % de interfaces sin pérdida sale de los cortes semanales cargados por archivo.
+  // Los registros semanales de la iniciativa anterior (IPSC en bancas remotas) ya no se muestran.
+  if (qos && initiatives.some((i) => i.slug === 'qos')) {
+    merged = merged.filter((r) => r.initiative !== 'qos');
+    for (const w of qos.weeklySummary()) {
+      merged.push({
+        id: null, auto: true, initiative: 'qos', week: w.week, values: { sin_perdida: w.clean, con_perdida: w.bad, interfaces: w.n },
+        detail: `${w.n.toLocaleString('es-MX')} interfaces de switch hacia AP en ${w.switches} switches y ${w.sedes} ${w.sedes === 1 ? 'sede' : 'sedes'}: ${w.read - w.bad} sin pérdida en Voice, Video ni Signaling y ${w.bad} con pérdida. ${w.limpias} ${w.limpias === 1 ? 'sede' : 'sedes'} sin pérdida.`,
+        sede: '', evidenceUrl: null, updatedAt: w.updatedAt, createdBy: null, author: 'Archivos de QoS',
+      });
+    }
+  }
   merged.sort((a, b) => a.week.localeCompare(b.week));
   const rdSedes = db.prepare('SELECT s.id, s.name FROM rd_sedes s WHERE EXISTS (SELECT 1 FROM rd_aps a WHERE a.sede_id = s.id) ORDER BY s.sort, s.id').all();
   const recorridosTotal = recorridos ? db.prepare("SELECT COUNT(*) AS n FROM recorridos WHERE status = 'completo'").get().n : null;
@@ -450,6 +463,7 @@ async function api(req, res, url) {
     if (it.slug === 'recorridos') throw new HttpError(400, 'Los recorridos proactivos ahora se capturan por día en la sección Recorridos.');
     if (it.slug === 'rediseno') throw new HttpError(400, 'El rediseño WLAN ahora se captura por día dentro de su tablero.');
     if (it.slug === 'conexiones') throw new HttpError(400, 'El monitoreo 2.0 se calcula solo con las lecturas diarias de conexiones (Cargar Excel o Capturar día).');
+    if (it.slug === 'qos') throw new HttpError(400, 'La homologación de QoS WLAN se calcula con los archivos de contadores que se cargan cada semana (Cargar archivos).');
     if (it.slug === 'firmware') throw new HttpError(400, 'El debugging de firmware ahora se registra dentro de su iniciativa: análisis, actualizaciones y reportes de fallos.');
     if (it.slug === 'monitoreo') throw new HttpError(400, 'El monitoreo proactivo ahora se registra caso por caso dentro de su iniciativa (botón "Registrar caso").');
     if (!isDate(body.week)) throw new HttpError(400, 'Selecciona una fecha válida para la semana.');
@@ -621,6 +635,7 @@ async function api(req, res, url) {
   if (await conexiones.handle(req, res, url, user)) return;
   if (await monitoreo.handle(req, res, url, user)) return;
   if (await firmware.handle(req, res, url, user)) return;
+  if (await qos.handle(req, res, url, user)) return;
   throw new HttpError(404, 'Ruta no encontrada.');
 }
 
@@ -629,6 +644,7 @@ const rediseno = initRediseno({ db, HttpError, send, readJson, audit, now, DATA_
 const conexiones = initConexiones({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const monitoreo = initMonitoreo({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 const firmware = initFirmware({ db, HttpError, send, readJson, audit, now, DATA_DIR });
+const qos = initQos({ db, HttpError, send, readJson, audit, now, DATA_DIR });
 
 /* ---------- servidor ---------- */
 const server = http.createServer(async (req, res) => {
@@ -657,22 +673,24 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-/** v3.24: "Encuestas a usuarios finales" sale del portal. La iniciativa queda marcada como retirada (no se borra) y sus
- *  encuestas siguen en la tabla enc_encuestas del respaldo, por si hiciera falta consultarlas. */
-function retirarEncuestas() {
-  const r = db.prepare("SELECT id, def FROM initiatives WHERE slug = 'encuestas'").get();
+/** Iniciativas que salen del portal: quedan marcadas como retiradas (no se borran) y sus tablas siguen en la base y en el respaldo.
+ *  v3.24: Encuestas a usuarios finales (enc_encuestas). v3.26: Debugging periódico de firmware (fw_*). */
+function retirar(slug) {
+  const r = db.prepare('SELECT id, def FROM initiatives WHERE slug = ?').get(slug);
   if (!r) return;
   const def = JSON.parse(r.def);
   if (def.retirada) return;
   def.retirada = now();
   db.prepare('UPDATE initiatives SET def = ?, sort = 99 WHERE id = ?').run(JSON.stringify(def), r.id);
-  audit(null, 'iniciativa_retirada', { slug: 'encuestas' });
+  audit(null, 'iniciativa_retirada', { slug });
 }
 
 (async () => {
   seedDatabase();
-  retirarEncuestas();
+  retirar('encuestas');
+  retirar('firmware');
   conexiones.ensure();
+  qos.ensure();
   await ensureAdmin();
   server.listen(PORT, HOST, () => console.log(`Portal NPS · WLAN disponible en http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
 })();

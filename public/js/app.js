@@ -412,11 +412,13 @@
             ...(slug === 'recorridos' && window.PortalRecorridos ? window.PortalRecorridos.exportItems() : []),
             ...(slug === 'rediseno' && window.PortalRediseno ? window.PortalRediseno.exportItems() : []),
             ...(slug === 'conexiones' && window.PortalConexiones ? window.PortalConexiones.exportItems() : []),
+            ...(slug === 'qos' && window.PortalQos ? window.PortalQos.exportItems() : []),
             ...(slug === 'monitoreo' && window.PortalMonitoreo ? window.PortalMonitoreo.exportItems() : []),
             ...(slug === 'firmware' && window.PortalFirmware ? window.PortalFirmware.exportItems() : []),
-            ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
+            ['monitoreo', 'firmware', 'conexiones', 'qos'].includes(slug) ? null : { label: 'Excel (CSV)', hint: 'Resumen semanal de esta iniciativa', href: '/api/export.csv?iniciativa=' + slug },
           ]),
           slug === 'recorridos' && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/recorrido/nuevo' }, 'Nuevo recorrido') : null,
+          slug === 'qos' && canWrite() ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalQos?.nuevo() }, 'Cargar archivos') : null,
           slug === 'conexiones' && canWrite() ? [h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('excel') }, 'Cargar Excel'),
             h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('detalle') }, 'Cargar reportes Abaton / ISE'),
             h('button', { class: 'btn', type: 'button', onclick: () => window.PortalConexiones?.nuevo('caso') }, 'Registrar caso'),
@@ -426,21 +428,23 @@
           slug === 'firmware' && canWrite() ? [h('button', { class: 'btn', type: 'button', onclick: () => window.PortalFirmware?.nuevo('analisis') }, 'Nuevo análisis'),
             h('button', { class: 'btn', type: 'button', onclick: () => window.PortalFirmware?.nuevo('actualizacion') }, 'Registrar actualización'),
             h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.PortalFirmware?.nuevo('reporte') }, 'Reportar fallo')] : null,
-          !['recorridos', 'rediseno', 'conexiones', 'monitoreo', 'firmware'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
-      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : kpiBlock,
+          !['recorridos', 'rediseno', 'conexiones', 'monitoreo', 'firmware', 'qos'].includes(slug) && canWrite() ? h('a', { class: 'btn btn-primary', href: '#/capturar/' + slug }, 'Capturar avance') : null)),
+      ['monitoreo', 'firmware', 'conexiones', 'qos'].includes(slug) ? null : kpiBlock,
       slug === 'rediseno' ? h('div', { id: 'rd-root', class: 'rd-root' }) : null,
       slug === 'recorridos' ? h('div', { id: 'rec-root', class: 'rd-root' }) : null,
       slug === 'conexiones' ? h('div', { id: 'cx-root', class: 'rd-root' }) : null,
+      slug === 'qos' ? h('div', { id: 'qos-root', class: 'rd-root' }) : null,
       slug === 'monitoreo' ? h('div', { id: 'mon-root', class: 'rd-root' }) : null,
       slug === 'firmware' ? h('div', { id: 'fw-root', class: 'rd-root' }) : null,
-      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : chartPanel,
-      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : valueBlock,
-      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : h('section', { class: 'panel ini-general' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
-      ['monitoreo', 'firmware', 'conexiones'].includes(slug) ? null : sectionsBlock,
+      ['monitoreo', 'firmware', 'conexiones', 'qos'].includes(slug) ? null : chartPanel,
+      ['monitoreo', 'firmware', 'conexiones', 'qos'].includes(slug) ? null : valueBlock,
+      ['monitoreo', 'firmware', 'conexiones', 'qos'].includes(slug) ? null : h('section', { class: 'panel ini-general' }, h('h2', {}, slug === 'rediseno' || slug === 'recorridos' ? 'Resumen semanal' : 'Bitácora de avances semanales'), table),
+      ['monitoreo', 'firmware', 'conexiones', 'qos'].includes(slug) ? null : sectionsBlock,
     );
-    if (!noKpi && !['monitoreo', 'firmware', 'conexiones'].includes(slug)) drawChart(main);
+    if (!noKpi && !['monitoreo', 'firmware', 'conexiones', 'qos'].includes(slug)) drawChart(main);
     if (slug === 'rediseno' && window.PortalRediseno) window.PortalRediseno.mount(document.getElementById('rd-root'), it);
     if (slug === 'recorridos' && window.PortalRecorridos) window.PortalRecorridos.mount(document.getElementById('rec-root'));
+    if (slug === 'qos' && window.PortalQos) window.PortalQos.mount(document.getElementById('qos-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock] });
     if (slug === 'conexiones' && window.PortalConexiones) window.PortalConexiones.mount(document.getElementById('cx-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock], draw: () => drawChart(curEv || main) });
     if (slug === 'firmware' && window.PortalFirmware) window.PortalFirmware.mount(document.getElementById('fw-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock], draw: () => drawChart(curEv || main) });
     if (slug === 'monitoreo' && window.PortalMonitoreo) window.PortalMonitoreo.mount(document.getElementById('mon-root'), { resumen: [kpiBlock, chartPanel], acerca: [valueBlock, sectionsBlock], draw: () => drawChart(curEv || main) }).then(() => { if (state.openMon) { state.openMon = false; window.PortalMonitoreo.open(); } });
@@ -469,9 +473,10 @@
     if (slugArg === 'recorridos') { window.location.hash = '#/recorrido/nuevo'; return; }
     if (slugArg === 'rediseno') { window.location.hash = '#/iniciativa/rediseno'; return; }
     if (slugArg === 'conexiones') { window.location.hash = '#/iniciativa/conexiones'; return; }
+    if (slugArg === 'qos') { window.location.hash = '#/iniciativa/qos'; return; }
     if (slugArg === 'monitoreo') { state.openMon = true; window.location.hash = '#/iniciativa/monitoreo'; return; }
     if (slugArg === 'firmware') { window.location.hash = '#/iniciativa/firmware'; return; }
-    const inits = state.data.initiatives.filter((i) => !['recorridos', 'rediseno', 'conexiones', 'monitoreo', 'firmware'].includes(i.slug));
+    const inits = state.data.initiatives.filter((i) => !['recorridos', 'rediseno', 'conexiones', 'monitoreo', 'firmware', 'qos'].includes(i.slug));
     let it = inits.find((i) => i.slug === slugArg) || inits[0];
     const today = todayStr();
 
