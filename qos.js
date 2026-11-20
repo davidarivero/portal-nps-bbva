@@ -74,6 +74,9 @@ module.exports = function init(ctx) {
   const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const fechaTxt = (f) => `${Number(f.slice(8, 10))} ${MESES[Number(f.slice(5, 7)) - 1]} ${f.slice(0, 4)}`;
 
+  const VUELTA = 2 ** 36; // los contadores de enqueue del FED dan la vuelta en 36 bits
+  const DIAS_VIEJO = 4;    // en un seguimiento, una captura con más días de antigüedad que el corte no se carga
+
   /* ------------------------------------------------------------------ lectura de archivos */
   /** Suma los contadores de un bloque "qos queue stats interface": tráfico encolado y descartado por cola (bytes). Las colas 4 a 7 se suman a la 3. */
   function contadores(lines) {
@@ -130,7 +133,11 @@ module.exports = function init(ctx) {
       out.push({ intf: C.intf(m[1] || m[3]), ap: null, src: 'fed', ...c });
     });
     if (!host) { const m = base.match(/^(SW[-\w]+?)(?:_Ante|_Antes|_QoS|\.txt)/i); if (m) host = m[1]; }
-    return { tipo: 'txt', name, host, ip, fecha, sede: C.sedeDeHost(host) || C.sedeDeTexto(name), rows: out };
+    // el prompt dice qué switch respondió: si no es el del encabezado, el salto desde el pivote falló y se capturó otro equipo
+    const prompts = [...new Set([...t.matchAll(/^([A-Za-z0-9][\w.-]*)[#>]/gm)].map((m) => m[1]))];
+    const ajeno = host ? prompts.find((x) => x.toUpperCase() !== String(host).toUpperCase()) || null : null;
+    const pivote = (t.match(/Pivote:\s*(\d+\.\d+\.\d+\.\d+)/i) || [])[1] || null;
+    return { tipo: 'txt', name, host, ip, fecha, pivote, ajeno, sede: C.sedeDeHost(host) || C.sedeDeTexto(name), rows: out };
   }
 
   /** Excel: (a) salida FED renglón por renglón con Hostname e Interfaz; (b) una hoja por sede con AP, Puerto y Drops. */
@@ -198,7 +205,19 @@ module.exports = function init(ctx) {
 
   /** Resumen de lo leído, para la vista previa y para guardar. */
   function plan(buf, nombre) {
-    const { files, omitidos, errores } = leer(buf, nombre);
+    const leido = leer(buf, nombre); const { omitidos, errores } = leido; const rechazos = [];
+    // (a) el archivo trae los contadores de otro switch (falló el salto desde el pivote)
+    let files = leido.files.filter((f) => { if (!f.ajeno) return true; rechazos.push(`${f.host}${f.ip ? ` (${f.ip})` : ''}: el archivo trae los contadores de ${f.ajeno}, no de este switch (falló el salto${f.pivote ? ` desde el pivote ${f.pivote}` : ''}). No se carga; vuelve a capturarlo.`); return false; });
+    // (b) el mismo switch desde dos IP distintas: una de las capturas es en realidad otro equipo que no se leyó
+    const porHost = new Map(); for (const f of files) if (f.tipo === 'txt' && f.host && f.ip) { const k = f.host.toUpperCase(); if (!porHost.has(k)) porHost.set(k, []); porHost.get(k).push(f); }
+    const fuera = new Set();
+    for (const list of porHost.values()) {
+      if (new Set(list.map((f) => f.ip)).size < 2) continue;
+      const conocida = db.prepare('SELECT ip FROM qos_lecturas WHERE host = ? AND ip IS NOT NULL ORDER BY id DESC LIMIT 1').get(list[0].host);
+      const buena = list.find((f) => f.pivote && f.ip === f.pivote) || list.find((f) => conocida && f.ip === conocida.ip) || list[0];
+      for (const f of list) if (f !== buena) { fuera.add(f); rechazos.push(`${f.ip}: el archivo trae a ${f.host}, el mismo switch que ${buena.ip}. El equipo de ${f.ip} no se leyó; vuelve a capturarlo.`); }
+    }
+    files = files.filter((f) => !fuera.has(f));
     const fechas = new Map(); const sedes = new Map(); const sinSede = []; const errs = new Map();
     let interfaces = 0, sinLectura = 0, conDrops = 0, conFoco = 0;
     for (const f of files) {
@@ -221,9 +240,14 @@ module.exports = function init(ctx) {
     if (sinSede.length) avisos.push(`No se reconoce la sede de ${sinSede.length} ${sinSede.length === 1 ? 'switch' : 'switches'} (${sinSede.slice(0, 3).join(', ')}${sinSede.length > 3 ? '…' : ''}); se guardan como «Otra sede».`);
     if (omitidos.length) avisos.push(`${omitidos.length} ${omitidos.length === 1 ? 'archivo no trae' : 'archivos no traen'} interfaces hacia AP y se ${omitidos.length === 1 ? 'omite' : 'omiten'}.`);
     const fechaSugerida = [...fechas.entries()].sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))[0];
+    if (fechaSugerida) {
+      const viejos = files.filter((f) => f.fecha && f.fecha < C.addDays(fechaSugerida[0], -DIAS_VIEJO));
+      if (viejos.length) avisos.push(`${viejos.length} ${viejos.length === 1 ? 'switch trae' : 'switches traen'} contadores de otra fecha (${viejos.slice(0, 3).map((f) => `${f.host}: ${fechaTxt(f.fecha)}`).join(', ')}${viejos.length > 3 ? '…' : ''}). En un seguimiento no se cargan si son más de ${DIAS_VIEJO} días anteriores a la fecha de corte; vuelve a capturarlos.`);
+    }
+    avisos.unshift(...rechazos);
     return { files, resumen: { archivo: nombre, switches: files.filter((f) => f.tipo !== 'xlsx-ap').length, interfaces, sinLectura, conDrops, conFoco, sinClases: files.some((f) => f.tipo === 'xlsx-ap'),
       sedes: [...sedes.values()].sort((a, b) => b.interfaces - a.interfaces), fechas: [...fechas.entries()].map(([fecha, n]) => ({ fecha, n })).sort((a, b) => a.fecha.localeCompare(b.fecha)),
-      fechaSugerida: fechaSugerida ? fechaSugerida[0] : null, tipoSugerido: esBase(nombre) ? 'base' : 'seguimiento', avisos, errores: interfaces ? errores : [...errores, `${nombre}: no se encontraron interfaces con contadores de colas.`], hayErrores: !interfaces } };
+      fechaSugerida: fechaSugerida ? fechaSugerida[0] : null, rechazados: rechazos.length, tipoSugerido: esBase(nombre) ? 'base' : 'seguimiento', avisos, errores: interfaces ? errores : [...errores, `${nombre}: no se encontraron interfaces con contadores de colas.`], hayErrores: !interfaces } };
   }
 
   function guardar(p, fecha, tipo, user) {
@@ -239,11 +263,15 @@ module.exports = function init(ctx) {
       const up = db.prepare(`INSERT INTO qos_lecturas (corte_id, carga_id, sede, host, ip, intf, ap, src, ok, err, enq0, enq1, enq2, enq3, drp0, drp1, drp2, drp3) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT (corte_id, host, intf) DO UPDATE SET carga_id = excluded.carga_id, sede = excluded.sede, ip = excluded.ip, ap = excluded.ap, src = excluded.src, ok = excluded.ok, err = excluded.err,
         enq0 = excluded.enq0, enq1 = excluded.enq1, enq2 = excluded.enq2, enq3 = excluded.enq3, drp0 = excluded.drp0, drp1 = excluded.drp1, drp2 = excluded.drp2, drp3 = excluded.drp3`);
-      for (const f of p.files) for (const r of f.rows) up.run(corte.id, carga, f.sede || 'otra', String(f.host || path.basename(f.name)).slice(0, 120), f.ip, String(r.intf).slice(0, 80), r.ap, r.src, r.ok ? 1 : 0, r.err, ...r.enq, ...r.drp);
+      const borra = db.prepare('DELETE FROM qos_lecturas WHERE corte_id = ? AND host = ?');
+      const files = p.files.filter((f) => !(tipo === 'seguimiento' && f.fecha && f.fecha < C.addDays(fecha, -DIAS_VIEJO)));
+      // una nueva captura de un switch reemplaza todo lo que ese switch tenía en el corte
+      for (const h of new Set(files.filter((f) => f.tipo !== 'xlsx-ap').map((f) => String(f.host || path.basename(f.name)).slice(0, 120)))) borra.run(corte.id, h);
+      for (const f of files) for (const r of f.rows) up.run(corte.id, carga, f.sede || 'otra', String(f.host || path.basename(f.name)).slice(0, 120), f.ip, String(r.intf).slice(0, 80), r.ap, r.src, r.ok ? 1 : 0, r.err, ...r.enq, ...r.drp);
       db.exec('COMMIT');
       audit(user.id, 'qos_carga', { archivo: p.resumen.archivo, fecha, tipo, interfaces: p.resumen.interfaces });
       touch(); syncDef();
-      return { corteId: corte.id, cargaId: carga };
+      return { corteId: corte.id, cargaId: carga, omitidosFecha: p.files.length - files.length };
     } catch (err) { db.exec('ROLLBACK'); throw err; }
   }
 
@@ -268,10 +296,14 @@ module.exports = function init(ctx) {
     }
     for (const r of rows) {
       const p = prev && r.ok ? prev.get(`${r.host}|${r.intf}`) : null;
-      const sigue = p && [0, 1, 2, 3].every((q) => r.enq[q] >= p.enq[q] && r.drp[q] >= p.drp[q]);
+      // Reinicio = baja algún contador de drops o más de una cola de enqueue. Si solo baja el enqueue de una cola y su valor
+      // anterior cabía en 36 bits, el contador dio la vuelta (en 2^36 bytes ≈ 68.7 GB): se suma la vuelta y se sigue con la diferencia.
+      const bajaE = p ? [0, 1, 2, 3].filter((q) => r.enq[q] < p.enq[q]) : [];
+      const sigue = p && [0, 1, 2, 3].every((q) => r.drp[q] >= p.drp[q]) && (bajaE.length === 0 || (bajaE.length === 1 && p.enq[bajaE[0]] < VUELTA));
       r.modo = sigue ? 'delta' : p ? 'reinicio' : 'acumulado';
+      r.vuelta = sigue && bajaE.length === 1;
       r.nd = sigue ? r.drp.map((v, q) => v - p.drp[q]) : r.drp.slice();
-      r.ne = sigue ? r.enq.map((v, q) => v - p.enq[q]) : r.enq.slice();
+      r.ne = sigue ? r.enq.map((v, q) => v - p.enq[q] + (v < p.enq[q] ? VUELTA : 0)) : r.enq.slice();
       r.mal = r.ok && C.conPerdida(r, corte.tipo);
     }
     cache.set(key, rows);
